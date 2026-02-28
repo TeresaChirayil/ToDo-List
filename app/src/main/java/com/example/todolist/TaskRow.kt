@@ -8,6 +8,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import android.util.Log
 
 private val PurpleAccent = Color(0xFF7C3AED)   // close to screenshot
 private val DividerColor = Color(0xFFE9E9EE)
@@ -25,7 +26,10 @@ fun TaskRow(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable(onClick = onClick)
+                .clickable(onClick = {
+                    Log.d("TaskRowClick", "Clicked on task: $title, selected=$selected")
+                    onClick()
+                })
                 .heightIn(min = 64.dp)
                 .padding(horizontal = 16.dp),
             verticalAlignment = Alignment.CenterVertically

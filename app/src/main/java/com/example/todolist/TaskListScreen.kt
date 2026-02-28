@@ -20,6 +20,7 @@ fun TaskListScreen() {
     var showNewTask by remember { mutableStateOf(false) }
     var recognizer by remember { mutableStateOf<DigitalInkRecognizer?>(null) }
     var clearInkSignal by remember { mutableStateOf(0) }
+    var selectedTaskId by remember { mutableStateOf<Long?>(null) }
 
     LaunchedEffect(Unit) {
         val modelIdentifier = DigitalInkRecognitionModelIdentifier.fromLanguageTag("en-US")
@@ -42,6 +43,12 @@ fun TaskListScreen() {
     Box(Modifier.fillMaxSize()) {
         TasksScreenMock(
             tasks = tasks,
+            selectedTaskId = selectedTaskId,
+            onSelectTask = { id ->
+                Log.d("TaskSelection", "Task clicked: $id, currently selected: $selectedTaskId")
+                selectedTaskId = if (selectedTaskId == id) null else id  // toggle on/off
+                Log.d("TaskSelection", "Now selected: $selectedTaskId")
+            },
             onToggleComplete = { id, checked ->
                 tasks = tasks.map { if (it.id == id) it.copy(completed = checked) else it }
             }
@@ -50,6 +57,34 @@ fun TaskListScreen() {
         InkOverlay(
             modifier = Modifier.fillMaxSize(),
             clearInkSignal = clearInkSignal,
+            onShapeRecognized = { shape, stroke ->
+                Log.d("ShapeRecognition", "Shape recognized: $shape")
+                // If a checkmark was drawn, find the closest task and mark it complete
+                if (shape is RecognizedShape.Checkmark) {
+                    val strokeCenter = stroke.getCenter()
+                    Log.d("Checkmark", "Checkmark drawn at position: ${strokeCenter.x}, ${strokeCenter.y}")
+
+                    // Find the closest task by vertical distance (tasks are arranged vertically)
+                    val activeTasks = tasks.filter { !it.completed }
+                    if (activeTasks.isNotEmpty()) {
+                        // Simple heuristic: checkmark in upper half likely belongs to task above middle
+                        // For now, just pick the first task (you can improve this with actual task positions)
+                        val closestTask = activeTasks.firstOrNull()
+
+                        if (closestTask != null) {
+                            Log.d("Checkmark", "Marking task '${closestTask.title}' as complete")
+                            tasks = tasks.map { task ->
+                                if (task.id == closestTask.id) {
+                                    task.copy(completed = true)
+                                } else {
+                                    task
+                                }
+                            }
+                            clearInkSignal++  // clear ink overlay
+                        }
+                    }
+                }
+            },
             onInkFinished = { strokes ->
                 val r = recognizer ?: return@InkOverlay
                 val inkBuilder = Ink.builder()
