@@ -3,7 +3,10 @@ package com.example.todolist
 import android.util.Log
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import com.google.mlkit.common.model.DownloadConditions
 import com.google.mlkit.common.model.RemoteModelManager
@@ -41,98 +44,93 @@ fun TaskListScreen() {
     }
 
     Box(Modifier.fillMaxSize()) {
-        TasksScreenMock(
-            tasks = tasks,
-            selectedTaskId = null,  // We're using proximity, not selection
-            onSelectTask = { },     // No-op
-            onToggleComplete = { id, checked ->
-                tasks = tasks.map { if (it.id == id) it.copy(completed = checked) else it }
-            }
-        )
+        // Top half: Task list
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .fillMaxHeight(0.5f)
+                .align(Alignment.TopCenter)
+        ) {
+            TasksScreenMock(
+                tasks = tasks,
+                selectedTaskId = selectedTaskId,
+                onSelectTask = { id ->
+                    Log.d("TaskSelection", "Selected task: $id")
+                    selectedTaskId = if (selectedTaskId == id) null else id
+                },
+                onToggleComplete = { id, checked ->
+                    tasks = tasks.map { if (it.id == id) it.copy(completed = checked) else it }
+                }
+            )
+        }
 
+        // Bottom half: Drawing area
         InkOverlay(
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .fillMaxHeight(0.5f)
+                .align(Alignment.BottomCenter),
             clearInkSignal = clearInkSignal,
             onShapeRecognized = { shape, stroke ->
-                Log.d("ShapeRecognition", "Shape recognized: $shape, points: ${stroke.points.size}")
+                Log.d("ShapeRecognition", "Shape: $shape, selectedTask: $selectedTaskId")
 
-                // Skip shape recognition for VERY long strokes that are definitely text (>60 points)
-                // But allow medium-length strokes for zigzag (which can be 30-50 points)
-                if (stroke.points.size > 60) {
-                    Log.d("ShapeRecognition", "Skipping - likely text (${stroke.points.size} points)")
+                val strokeLength = stroke.points.size
+
+                // Skip text
+                if (shape is RecognizedShape.Unknown && strokeLength > 25) {
+                    Log.d("Text", "Unknown shape - likely text")
                     return@InkOverlay
                 }
 
-                val firstIncompleteTask = tasks.firstOrNull { !it.completed }
+                // Get selected task - if none selected, ignore gesture
+                val targetTask = if (selectedTaskId != null) {
+                    tasks.firstOrNull { it.id == selectedTaskId }
+                } else {
+                    Log.d("Shape", "No task selected - ignoring gesture")
+                    return@InkOverlay
+                }
+
+                if (targetTask == null) return@InkOverlay
 
                 when (shape) {
-                    // ✓ Checkmark - mark first task complete
+                    // ✓ Checkmark - mark selected task complete
                     is RecognizedShape.Checkmark -> {
-                        if (firstIncompleteTask != null) {
-                            Log.d("Checkmark", "Marking '${firstIncompleteTask.title}' as complete")
-                            tasks = tasks.map { task ->
-                                if (task.id == firstIncompleteTask.id) {
-                                    task.copy(completed = true)
-                                } else {
-                                    task
-                                }
+                        Log.d("Checkmark", "Marking '${targetTask.title}' as complete")
+                        tasks = tasks.map { task ->
+                            if (task.id == targetTask.id) {
+                                task.copy(completed = true)
+                            } else {
+                                task
                             }
-                            clearInkSignal++
                         }
+                        selectedTaskId = null
+                        clearInkSignal++
                     }
 
-                    // ⚡ Zigzag - delete first task
-                    is RecognizedShape.Zigzag -> {
-                        if (firstIncompleteTask != null) {
-                            Log.d("Zigzag", "Deleting '${firstIncompleteTask.title}'")
-                            tasks = tasks.filter { it.id != firstIncompleteTask.id }
-                            clearInkSignal++
-                        }
+                    // ✗ X mark - delete selected task
+                    is RecognizedShape.ArrowLeft -> {
+                        Log.d("XMark", "Deleting '${targetTask.title}'")
+                        tasks = tasks.filter { it.id != targetTask.id }
+                        selectedTaskId = null
+                        clearInkSignal++
                     }
 
-                    // ↑ Arrow Up - prioritize first task (move to top)
-                    is RecognizedShape.ArrowUp -> {
-                        if (firstIncompleteTask != null) {
-                            Log.d("ArrowUp", "Prioritizing '${firstIncompleteTask.title}' to top")
-                            val otherTasks = tasks.filter { it.id != firstIncompleteTask.id }
-                            tasks = listOf(firstIncompleteTask) + otherTasks
-                            clearInkSignal++
-                        }
-                    }
-
-                    // ↓ Arrow Down - deprioritize first task (move to bottom)
-                    is RecognizedShape.ArrowDown -> {
-                        if (firstIncompleteTask != null) {
-                            Log.d("ArrowDown", "Moving '${firstIncompleteTask.title}' to bottom")
-                            val otherTasks = tasks.filter { it.id != firstIncompleteTask.id }
-                            tasks = otherTasks + listOf(firstIncompleteTask)
-                            clearInkSignal++
-                        }
-                    }
-
-                    // Other directions (left/right) - no-op for now
-                    is RecognizedShape.ArrowLeft, is RecognizedShape.ArrowRight -> {
-                        Log.d("Arrow", "Arrow detected but not implemented")
-                    }
-
-                    // ● Circle - toggle highlight on first task
+                    // ● Circle - move selected task up one position
                     is RecognizedShape.Circle -> {
-                        if (firstIncompleteTask != null) {
-                            Log.d("Circle", "Highlighting '${firstIncompleteTask.title}'")
-                            tasks = tasks.map { task ->
-                                if (task.id == firstIncompleteTask.id) {
-                                    // Toggle a highlight flag (we can show this visually later)
-                                    task.copy(isHighlighted = !task.isHighlighted)
-                                } else {
-                                    task
-                                }
-                            }
-                            clearInkSignal++
+                        Log.d("Circle", "Moving '${targetTask.title}' up one position")
+                        val taskIndex = tasks.indexOfFirst { it.id == targetTask.id }
+                        if (taskIndex > 0) {
+                            val newTasks = tasks.toMutableList()
+                            newTasks.removeAt(taskIndex)
+                            newTasks.add(taskIndex - 1, targetTask)
+                            tasks = newTasks
                         }
+                        selectedTaskId = null
+                        clearInkSignal++
                     }
 
                     else -> {
-                        Log.d("Shape", "Unknown shape: $shape")
+                        // Ignore other shapes
                     }
                 }
             },
