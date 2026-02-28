@@ -52,6 +52,7 @@ fun TasksScreenMock(
                     title = task.title,
                     selected = task.id == selectedTaskId,
                     checked = false,
+                    highlighted = task.isHighlighted,
                     onCheckedChange = { checked -> onToggleComplete(task.id, checked) },
                     onClick = { onSelectTask(task.id) }
                 )
@@ -74,6 +75,7 @@ fun TasksScreenMock(
                         title = task.title,
                         selected = false,
                         checked = true,
+                        highlighted = task.isHighlighted,
                         onCheckedChange = { checked -> onToggleComplete(task.id, checked) },
                         onClick = { onSelectTask(task.id) }
                     )

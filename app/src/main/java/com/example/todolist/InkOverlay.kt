@@ -2,16 +2,13 @@ package com.example.todolist
 
 import android.os.SystemClock
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.drag
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.input.pointer.PointerEventPass
 import kotlin.math.sqrt
 
 data class TimedPoint(val x: Float, val y: Float, val t: Long)
@@ -42,39 +39,33 @@ fun InkOverlay(
     }
 
     Canvas(
-        modifier = modifier.pointerInput(Unit) {
-            awaitEachGesture {
-                val down = awaitFirstDown(pass = PointerEventPass.Final)
-                currentPoints = listOf(
-                    TimedPoint(down.position.x, down.position.y, SystemClock.uptimeMillis())
+        modifier = modifier
+            .pointerInput(Unit) {
+                detectDragGestures(
+                    onDragStart = { offset ->
+                        currentPoints = listOf(
+                            TimedPoint(offset.x, offset.y, SystemClock.uptimeMillis())
+                        )
+                    },
+                    onDrag = { change, _ ->
+                        val p = change.position
+                        currentPoints = currentPoints + TimedPoint(p.x, p.y, SystemClock.uptimeMillis())
+                        change.consume()
+                    },
+                    onDragEnd = {
+                        if (currentPoints.isNotEmpty() && currentPoints.size > 2) {
+                            val newStroke = Stroke(currentPoints)
+                            val newStrokes = strokes + newStroke
+                            strokes = newStrokes
+
+                            val shape = shapeRecognizer.recognize(newStroke)
+                            onShapeRecognized(shape, newStroke)
+                            onInkFinished(newStrokes)
+                        }
+                        currentPoints = emptyList()
+                    }
                 )
-
-                var hasMoved = false
-                drag(down.id) { change ->
-                    val p = change.position
-                    currentPoints = currentPoints + TimedPoint(p.x, p.y, SystemClock.uptimeMillis())
-                    hasMoved = true
-                    change.consume()  // Only consume if actually dragging
-                }
-
-                // Only process as stroke if user actually moved/drew
-                if (currentPoints.isNotEmpty() && hasMoved && currentPoints.size > 2) {
-                    val newStroke = Stroke(currentPoints)
-                    val newStrokes = strokes + newStroke
-                    strokes = newStrokes
-                    currentPoints = emptyList()
-
-                    // Try to recognize the shape
-                    val shape = shapeRecognizer.recognize(newStroke)
-                    onShapeRecognized(shape, newStroke)
-
-                    onInkFinished(newStrokes)
-                } else {
-                    // If no movement, reset without consuming (let tap pass through)
-                    currentPoints = emptyList()
-                }
             }
-        }
     ) {
         strokes.forEach { stroke ->
             for (i in 0 until stroke.points.lastIndex) {

@@ -19,6 +19,7 @@ fun TaskRow(
     title: String,
     selected: Boolean,
     checked: Boolean,
+    highlighted: Boolean = false,
     onCheckedChange: (Boolean) -> Unit,
     onClick: () -> Unit
 ) {
@@ -26,6 +27,13 @@ fun TaskRow(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                .background(
+                    when {
+                        selected -> Color(0xFFE8D5F2)  // Light purple for selection
+                        highlighted -> Color(0xFFFFF9C4)  // Light yellow for highlight
+                        else -> Color.Transparent
+                    }
+                )
                 .clickable(onClick = {
                     Log.d("TaskRowClick", "Clicked on task: $title, selected=$selected")
                     onClick()
@@ -34,10 +42,10 @@ fun TaskRow(
                 .padding(horizontal = 16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Left selection bar
+            // Left selection bar - MUCH THICKER
             Box(
                 modifier = Modifier
-                    .width(4.dp)
+                    .width(6.dp)  // was 4dp, now 6dp - thicker!
                     .fillMaxHeight()
                     .background(if (selected) PurpleAccent else Color.Transparent)
             )
