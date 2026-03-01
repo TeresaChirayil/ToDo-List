@@ -6,14 +6,12 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -90,7 +88,7 @@ fun TaskListScreen() {
         // Divider line
         HorizontalDivider(thickness = 2.dp, color = Color(0xFFE0E0E0))
 
-        // Bottom: Drawing box (persistent, always visible, like bootcamp canvas)
+        // Bottom: Drawing box (persistent, always visible)
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -115,7 +113,7 @@ fun TaskListScreen() {
                         return@InkOverlay
                     }
 
-                    // Get selected task - if none selected, ignore gesture
+                    // Get selected task
                     val targetTask = if (selectedTaskId != null) {
                         tasks.firstOrNull { it.id == selectedTaskId }
                     } else {
@@ -126,7 +124,7 @@ fun TaskListScreen() {
                     if (targetTask == null) return@InkOverlay
 
                     when (shape) {
-                        // ✓ Checkmark - mark selected task complete
+                        // ✓ Checkmark - mark complete
                         is RecognizedShape.Checkmark -> {
                             Log.d("Checkmark", "Marking '${targetTask.title}' as complete")
                             tasks = tasks.map { task ->
@@ -140,7 +138,7 @@ fun TaskListScreen() {
                             clearInkSignal++
                         }
 
-                        // ✗ X mark - delete selected task
+                        // ✗ X mark - delete task
                         is RecognizedShape.XMark -> {
                             Log.d("XMark", "Deleting '${targetTask.title}'")
                             tasks = tasks.filter { it.id != targetTask.id }
@@ -148,9 +146,9 @@ fun TaskListScreen() {
                             clearInkSignal++
                         }
 
-                        // ● Circle - move selected task up one position
-                        is RecognizedShape.Circle -> {
-                            Log.d("Circle", "Moving '${targetTask.title}' up one position")
+                        // ↑ Up arrow - move up one position
+                        is RecognizedShape.UpArrow -> {
+                            Log.d("UpArrow", "Moving '${targetTask.title}' up one position")
                             val taskIndex = tasks.indexOfFirst { it.id == targetTask.id }
                             if (taskIndex > 0) {
                                 val newTasks = tasks.toMutableList()
