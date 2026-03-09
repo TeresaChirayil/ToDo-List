@@ -7,13 +7,10 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.HorizontalDivider
-
 import androidx.compose.ui.graphics.Color
-
 
 private val DividerColor = Color(0xFFE9E9EE)
 private val HintColor = Color(0xFF9AA0A6)
@@ -23,7 +20,8 @@ fun TasksScreenMock(
     tasks: List<Task>,
     selectedTaskId: Long? = null,
     onSelectTask: (Long) -> Unit = {},
-    onToggleComplete: (Long, Boolean) -> Unit = { _, _ -> }
+    onToggleComplete: (Long, Boolean) -> Unit = { _, _ -> },
+    onEditTask: (Long) -> Unit = {}
 ) {
     val active = tasks.filter { !it.completed }
     val completed = tasks.filter { it.completed }
@@ -34,9 +32,8 @@ fun TasksScreenMock(
 
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(bottom = 96.dp) // leave room for hint text area
+            contentPadding = PaddingValues(bottom = 96.dp)
         ) {
-            // Title header
             item {
                 Text(
                     text = "Tasks",
@@ -46,7 +43,6 @@ fun TasksScreenMock(
                 HorizontalDivider(color = DividerColor, thickness = 1.dp)
             }
 
-            // Active tasks
             items(active, key = { it.id }) { task ->
                 TaskRow(
                     title = task.title,
@@ -54,11 +50,11 @@ fun TasksScreenMock(
                     checked = false,
                     highlighted = task.isHighlighted,
                     onCheckedChange = { checked -> onToggleComplete(task.id, checked) },
-                    onClick = { onSelectTask(task.id) }
+                    onClick = { onSelectTask(task.id) },
+                    onDoubleTap = { onEditTask(task.id) }
                 )
             }
 
-            // Completed header
             item {
                 Spacer(Modifier.height(6.dp))
                 CompletedHeader(
@@ -68,7 +64,6 @@ fun TasksScreenMock(
                 )
             }
 
-            // Completed items (optional)
             if (completedExpanded) {
                 items(completed, key = { it.id }) { task ->
                     TaskRow(
@@ -77,13 +72,13 @@ fun TasksScreenMock(
                         checked = true,
                         highlighted = task.isHighlighted,
                         onCheckedChange = { checked -> onToggleComplete(task.id, checked) },
-                        onClick = { onSelectTask(task.id) }
+                        onClick = { onSelectTask(task.id) },
+                        onDoubleTap = { onEditTask(task.id) }
                     )
                 }
             }
         }
 
-        // Hint text centered lower on screen like the mock
         Text(
             text = "Write 'new' to add a task",
             color = HintColor,

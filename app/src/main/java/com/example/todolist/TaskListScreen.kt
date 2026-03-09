@@ -34,6 +34,7 @@ fun TaskListScreen() {
     var recognizer by remember { mutableStateOf<DigitalInkRecognizer?>(null) }
     var clearInkSignal by remember { mutableStateOf(0) }
     var selectedTaskId by remember { mutableStateOf<Long?>(null) }
+    var editingTaskId by remember { mutableStateOf<Long?>(null) }
 
     LaunchedEffect(Unit) {
         val modelIdentifier = DigitalInkRecognitionModelIdentifier.fromLanguageTag("en-US")
@@ -53,12 +54,38 @@ fun TaskListScreen() {
             }
     }
 
+    // Dialogs live here, outside all Boxes, so nothing blocks them
+    if (showNewTask) {
+        NewTaskDialog(
+            onAdd = { title ->
+                tasks = tasks + Task(id = System.currentTimeMillis(), title = title)
+                showNewTask = false
+            },
+            onDismiss = { showNewTask = false }
+        )
+    }
+
+    editingTaskId?.let { id ->
+        val taskToEdit = tasks.firstOrNull { it.id == id }
+        if (taskToEdit != null) {
+            NewTaskDialog(
+                initialText = taskToEdit.title,
+                title = "Edit Task",
+                confirmLabel = "Save",
+                onAdd = { newTitle ->
+                    tasks = tasks.map { if (it.id == id) it.copy(title = newTitle) else it }
+                    editingTaskId = null
+                },
+                onDismiss = { editingTaskId = null }
+            )
+        }
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(Color.White)
     ) {
-        // Header with title
         Text(
             text = "Tasks",
             fontSize = 28.sp,
@@ -66,7 +93,6 @@ fun TaskListScreen() {
             modifier = Modifier.padding(16.dp)
         )
 
-        // Top: Task list (scrollable, takes remaining space)
         Box(
             modifier = Modifier
                 .weight(1f)
@@ -81,14 +107,15 @@ fun TaskListScreen() {
                 },
                 onToggleComplete = { id, checked ->
                     tasks = tasks.map { if (it.id == id) it.copy(completed = checked) else it }
+                },
+                onEditTask = { id ->
+                    editingTaskId = id
                 }
             )
         }
 
-        // Divider line
         HorizontalDivider(thickness = 2.dp, color = Color(0xFFE0E0E0))
 
-        // Bottom: Drawing box (persistent, always visible)
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -107,13 +134,11 @@ fun TaskListScreen() {
 
                     val strokeLength = stroke.points.size
 
-                    // Skip text
                     if (shape is RecognizedShape.Unknown && strokeLength > 25) {
                         Log.d("Text", "Unknown shape - likely text")
                         return@InkOverlay
                     }
 
-                    // Get selected task
                     val targetTask = if (selectedTaskId != null) {
                         tasks.firstOrNull { it.id == selectedTaskId }
                     } else {
@@ -124,31 +149,19 @@ fun TaskListScreen() {
                     if (targetTask == null) return@InkOverlay
 
                     when (shape) {
-                        // ✓ Checkmark - mark complete
                         is RecognizedShape.Checkmark -> {
-                            Log.d("Checkmark", "Marking '${targetTask.title}' as complete")
                             tasks = tasks.map { task ->
-                                if (task.id == targetTask.id) {
-                                    task.copy(completed = true)
-                                } else {
-                                    task
-                                }
+                                if (task.id == targetTask.id) task.copy(completed = true) else task
                             }
                             selectedTaskId = null
                             clearInkSignal++
                         }
-
-                        // ✗ X mark - delete task
                         is RecognizedShape.XMark -> {
-                            Log.d("XMark", "Deleting '${targetTask.title}'")
                             tasks = tasks.filter { it.id != targetTask.id }
                             selectedTaskId = null
                             clearInkSignal++
                         }
-
-                        // ↑ Up arrow - move up one position
                         is RecognizedShape.UpArrow -> {
-                            Log.d("UpArrow", "Moving '${targetTask.title}' up one position")
                             val taskIndex = tasks.indexOfFirst { it.id == targetTask.id }
                             if (taskIndex > 0) {
                                 val newTasks = tasks.toMutableList()
@@ -159,10 +172,7 @@ fun TaskListScreen() {
                             selectedTaskId = null
                             clearInkSignal++
                         }
-
-                        else -> {
-                            // Ignore other shapes
-                        }
+                        else -> {}
                     }
                 },
                 onInkFinished = { strokes ->
@@ -187,16 +197,6 @@ fun TaskListScreen() {
                         }
                 }
             )
-
-            if (showNewTask) {
-                NewTaskDialog(
-                    onAdd = { title ->
-                        tasks = tasks + Task(id = System.currentTimeMillis(), title = title)
-                        showNewTask = false
-                    },
-                    onDismiss = { showNewTask = false }
-                )
-            }
         }
     }
 }

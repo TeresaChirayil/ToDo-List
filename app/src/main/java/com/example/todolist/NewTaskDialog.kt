@@ -12,14 +12,17 @@ import androidx.compose.ui.focus.focusRequester
 @Composable
 fun NewTaskDialog(
     onAdd: (String) -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    initialText: String = "",
+    title: String = "New Task",
+    confirmLabel: String = "Add"
 ) {
-    var text by remember { mutableStateOf("") }
+    var text by remember { mutableStateOf(initialText) }
     val focusRequester = remember { FocusRequester() }
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("New Task") },
+        title = { Text(title) },
         text = {
             TextField(
                 value = text,
@@ -33,7 +36,7 @@ fun NewTaskDialog(
             TextButton(onClick = {
                 val trimmed = text.trim()
                 if (trimmed.isNotEmpty()) onAdd(trimmed)
-            }) { Text("Add") }
+            }) { Text(confirmLabel) }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) { Text("Cancel") }
