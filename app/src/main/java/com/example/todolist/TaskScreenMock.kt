@@ -19,17 +19,12 @@ private val HintColor = Color(0xFF9AA0A6)
 fun TasksScreenMock(
     tasks: List<Task>,
     selectedTaskId: Long? = null,
-    onSelectTask: (Long) -> Unit = {},
-    onToggleComplete: (Long, Boolean) -> Unit = { _, _ -> },
-    onEditTask: (Long) -> Unit = {}
+    onSelectTask: (Long) -> Unit = {}
 ) {
-    val active = tasks.filter { !it.completed }
-    val completed = tasks.filter { it.completed }
+    val (activeTasks, completedTasks) = tasks.partition { !it.completed }
+    var completedExpanded by remember { mutableStateOf(true) }
 
-    var completedExpanded by remember { mutableStateOf(false) }
-
-    Box(Modifier.fillMaxSize()) {
-
+    Box(modifier = Modifier.fillMaxSize()) {
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(bottom = 96.dp)
@@ -43,37 +38,33 @@ fun TasksScreenMock(
                 HorizontalDivider(color = DividerColor, thickness = 1.dp)
             }
 
-            items(active, key = { it.id }) { task ->
+            // Active tasks
+            items(activeTasks, key = { it.id }) { task ->
                 TaskRow(
                     title = task.title,
                     selected = task.id == selectedTaskId,
                     checked = false,
-                    highlighted = task.isHighlighted,
-                    onCheckedChange = { checked -> onToggleComplete(task.id, checked) },
-                    onClick = { onSelectTask(task.id) },
-                    onDoubleTap = { onEditTask(task.id) }
+                    onClick = { onSelectTask(task.id) }
                 )
             }
 
+            // Completed section - always visible
             item {
-                Spacer(Modifier.height(6.dp))
+                Spacer(modifier = Modifier.height(6.dp))
                 CompletedHeader(
-                    count = completed.size,
+                    count = completedTasks.size,
                     expanded = completedExpanded,
                     onToggle = { completedExpanded = !completedExpanded }
                 )
             }
 
             if (completedExpanded) {
-                items(completed, key = { it.id }) { task ->
+                items(completedTasks, key = { it.id }) { task ->
                     TaskRow(
                         title = task.title,
-                        selected = false,
+                        selected = task.id == selectedTaskId,
                         checked = true,
-                        highlighted = task.isHighlighted,
-                        onCheckedChange = { checked -> onToggleComplete(task.id, checked) },
-                        onClick = { onSelectTask(task.id) },
-                        onDoubleTap = { onEditTask(task.id) }
+                        onClick = { onSelectTask(task.id) }
                     )
                 }
             }
@@ -84,8 +75,8 @@ fun TasksScreenMock(
             color = HintColor,
             style = MaterialTheme.typography.bodyMedium,
             modifier = Modifier
-                .align(Alignment.Center)
-                .padding(top = 180.dp)
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 24.dp)
         )
     }
 }
