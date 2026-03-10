@@ -47,9 +47,8 @@ fun TasksScreenMock(
             // Active tasks
             items(activeTasks, key = { it.id }) { task ->
                 TaskRow(
-                    title = task.title,
+                    task = task,
                     selected = task.id == selectedTaskId,
-                    checked = false,
                     onClick = { onSelectTask(task.id) },
                     onDoubleClick = { onEditTask(task) }
                 )
@@ -68,9 +67,8 @@ fun TasksScreenMock(
             if (completedExpanded) {
                 items(completedTasks, key = { it.id }) { task ->
                     TaskRow(
-                        title = task.title,
+                        task = task,
                         selected = task.id == selectedTaskId,
-                        checked = true,
                         onClick = { onSelectTask(task.id) },
                         onDoubleClick = { onEditTask(task) }
                     )
@@ -88,26 +86,24 @@ fun TasksScreenMock(
                     .padding(end = 4.dp, top = 60.dp, bottom = 100.dp)
                     .width(4.dp)
             ) {
-                val maxHeightPx = constraints.maxHeight.toFloat()
-                
-                // Estimate total items including headers and spacers
+                val viewHeight = maxHeight
                 val totalItemsCount = (activeTasks.size + completedTasks.size + 3).coerceAtLeast(1)
                 
-                // Calculate thumb height proportionally
-                val thumbHeight = remember(totalItemsCount, maxHeightPx) {
-                    (maxHeightPx / totalItemsCount * 2).coerceIn(40f, maxHeightPx)
+                val thumbHeight = remember(totalItemsCount, viewHeight) {
+                    (viewHeight / totalItemsCount.toFloat() * 2f).coerceIn(40.dp, viewHeight)
                 }
                 
-                // Calculate scroll offset based on first visible item
-                val scrollOffset = remember(listState.firstVisibleItemIndex, totalItemsCount, maxHeightPx, thumbHeight) {
-                    val scrollPercent = listState.firstVisibleItemIndex.toFloat() / (totalItemsCount.toFloat()).coerceAtLeast(1f)
-                    (maxHeightPx - thumbHeight) * scrollPercent
+                val scrollOffset by remember(listState.firstVisibleItemIndex, totalItemsCount, viewHeight, thumbHeight) {
+                    derivedStateOf {
+                        val scrollPercent = listState.firstVisibleItemIndex.toFloat() / (totalItemsCount.toFloat()).coerceAtLeast(1f)
+                        (viewHeight - thumbHeight) * scrollPercent
+                    }
                 }
 
                 Box(
                     modifier = Modifier
-                        .offset(y = with(androidx.compose.ui.platform.LocalDensity.current) { scrollOffset.toDp() })
-                        .size(width = 4.dp, height = with(androidx.compose.ui.platform.LocalDensity.current) { thumbHeight.toDp() })
+                        .offset(y = scrollOffset)
+                        .size(width = 4.dp, height = thumbHeight)
                         .background(Color.Gray.copy(alpha = 0.5f), RoundedCornerShape(2.dp))
                 )
             }

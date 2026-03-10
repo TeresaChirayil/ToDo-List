@@ -5,15 +5,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Snackbar
-import androidx.compose.material3.SnackbarDuration
-import androidx.compose.material3.SnackbarHost
-import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.SnackbarResult
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -30,6 +22,7 @@ import com.google.mlkit.vision.digitalink.DigitalInkRecognitionModelIdentifier
 import com.google.mlkit.vision.digitalink.DigitalInkRecognizer
 import com.google.mlkit.vision.digitalink.DigitalInkRecognizerOptions
 import com.google.mlkit.vision.digitalink.Ink
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 @Composable
@@ -37,14 +30,15 @@ fun TaskListScreen() {
     var tasks by remember { mutableStateOf(listOf<Task>()) }
     var showNewTask by remember { mutableStateOf(false) }
     var editingTask by remember { mutableStateOf<Task?>(null) }
+    var taggingTaskId by remember { mutableStateOf<Long?>(null) }
     var recognizer by remember { mutableStateOf<DigitalInkRecognizer?>(null) }
     var clearInkSignal by remember { mutableStateOf(0) }
     var selectedTaskId by remember { mutableStateOf<Long?>(null) }
 
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
+    val shapeRecognizer = remember { ShapeRecognizer() }
 
-    // Saves the task list before each gesture action for undo
     var previousTasks by remember { mutableStateOf<List<Task>?>(null) }
 
     fun showUndoSnackbar(message: String) {
@@ -82,6 +76,57 @@ fun TaskListScreen() {
                 )
             }
             .addOnFailureListener { e -> Log.e("MLKit", "Error downloading model", e) }
+    }
+
+    // --- Dialogs moved OUTSIDE the Scaffold/ink Box so touch events are not consumed by the overlay ---
+    if (showNewTask) {
+        TaskDialog(
+            title = "New Task",
+            onConfirm = { title ->
+                tasks = tasks + Task(id = System.currentTimeMillis(), title = title)
+                showNewTask = false
+            },
+            onDismiss = { showNewTask = false }
+        )
+    }
+
+    editingTask?.let { task ->
+        TaskDialog(
+            title = "Edit Task",
+            initialText = task.title,
+            onConfirm = { newTitle ->
+                tasks = tasks.map { if (it.id == task.id) it.copy(title = newTitle) else it }
+                editingTask = null
+            },
+            onDismiss = { editingTask = null }
+        )
+    }
+
+    taggingTaskId?.let { id ->
+        var expanded by remember { mutableStateOf(true) }
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = {
+                expanded = false
+                taggingTaskId = null
+            }
+        ) {
+            listOf("School", "Work", "Personal", "None").forEach { option ->
+                DropdownMenuItem(
+                    text = { Text(option) },
+                    onClick = {
+                        tasks = tasks.map { task ->
+                            if (task.id == id) {
+                                task.copy(tag = if (option == "None") null else option)
+                            } else task
+                        }
+                        expanded = false
+                        taggingTaskId = null
+                        selectedTaskId = null
+                    }
+                )
+            }
+        }
     }
 
     Scaffold(
@@ -128,7 +173,6 @@ fun TaskListScreen() {
                     tasks = tasks,
                     selectedTaskId = selectedTaskId,
                     onSelectTask = { id ->
-                        Log.d("TaskSelection", "Selected task: $id")
                         selectedTaskId = if (selectedTaskId == id) null else id
                     },
                     onEditTask = { task -> editingTask = task }
@@ -150,85 +194,91 @@ fun TaskListScreen() {
                         .fillMaxSize()
                         .background(Color(0xFFF0F0F0), RoundedCornerShape(4.dp)),
                     clearInkSignal = clearInkSignal,
-                    onShapeRecognized = { shape, stroke ->
-                        Log.d("ShapeRecognition", "Shape: $shape, selectedTask: $selectedTaskId")
-
-                        val strokeLength = stroke.points.size
-
-                        if (shape is RecognizedShape.Unknown && strokeLength > 25) {
-                            Log.d("Text", "Unknown shape - likely text")
-                            return@InkOverlay
-                        }
-
-                        val targetTask = selectedTaskId?.let { id ->
-                            tasks.firstOrNull { it.id == id }
-                        } ?: run {
-                            Log.d("Shape", "No task selected - ignoring gesture")
-                            return@InkOverlay
-                        }
-
-                        when (shape) {
-                            is RecognizedShape.Checkmark -> {
-                                Log.d("Checkmark", "Marking '${targetTask.title}' as complete")
-                                previousTasks = tasks
-                                moveTaskToCompleted(targetTask.id)
-                                selectedTaskId = null
-                                clearInkSignal++
-                                showUndoSnackbar("\"${targetTask.title}\" completed")
-                            }
-
-                            is RecognizedShape.XMark -> {
-                                Log.d("XMark", "Deleting '${targetTask.title}'")
-                                previousTasks = tasks
-                                tasks = tasks.filter { it.id != targetTask.id }
-                                selectedTaskId = null
-                                clearInkSignal++
-                                showUndoSnackbar("\"${targetTask.title}\" deleted")
-                            }
-
-                            is RecognizedShape.UpArrow -> {
-                                Log.d("UpArrow", "Moving '${targetTask.title}' up")
-                                val taskIndex = tasks.indexOfFirst { it.id == targetTask.id }
-                                if (taskIndex > 0) {
-                                    previousTasks = tasks
-                                    val newTasks = tasks.toMutableList()
-                                    val movedTask = newTasks.removeAt(taskIndex)
-                                    newTasks.add(taskIndex - 1, movedTask)
-                                    tasks = newTasks
-                                    showUndoSnackbar("\"${targetTask.title}\" moved up")
-                                }
-                                selectedTaskId = null
-                                clearInkSignal++
-                            }
-
-                            else -> {}
-                        }
+                    onShapeRecognized = { _, _ ->
+                        // We ignore immediate shape recognition to avoid conflicts with writing "tag" or "new"
                     },
                     onInkFinished = { strokes ->
-                        val r = recognizer ?: return@InkOverlay
-                        val inkBuilder = Ink.builder()
+                        // FIX 1: Capture selectedTaskId immediately before the coroutine/delay
+                        // so it isn't stale by the time recognition finishes
+                        val capturedSelectedId = selectedTaskId
 
-                        strokes.forEach { stroke ->
-                            val strokeBuilder = Ink.Stroke.builder()
-                            stroke.points.forEach { p ->
-                                strokeBuilder.addPoint(Ink.Point.create(p.x, p.y, p.t))
-                            }
-                            inkBuilder.addStroke(strokeBuilder.build())
-                        }
+                        scope.launch {
+                            delay(600)
 
-                        r.recognize(inkBuilder.build())
-                            .addOnSuccessListener { result ->
-                                val best = result.candidates.firstOrNull()?.text?.trim()?.lowercase()
-                                    ?: return@addOnSuccessListener
-                                if (best == "new" || best.startsWith("new")) {
-                                    showNewTask = true
-                                    clearInkSignal++
+                            val r = recognizer ?: return@launch
+                            val inkBuilder = Ink.builder()
+                            strokes.forEach { stroke ->
+                                val strokeBuilder = Ink.Stroke.builder()
+                                stroke.points.forEach { p ->
+                                    strokeBuilder.addPoint(Ink.Point.create(p.x, p.y, p.t))
                                 }
+                                inkBuilder.addStroke(strokeBuilder.build())
                             }
+
+                            r.recognize(inkBuilder.build())
+                                .addOnSuccessListener { result ->
+                                    // FIX 2: Strip punctuation so "tag." / "Tag," etc. all match
+                                    val best = result.candidates.firstOrNull()?.text
+                                        ?.trim()
+                                        ?.lowercase()
+                                        ?.replace(Regex("[^a-z]"), "")
+                                        ?: ""
+
+                                    Log.d("MLKit", "Recognized: '$best', capturedSelectedId=$capturedSelectedId")
+
+                                    if (best == "new" || best.startsWith("new")) {
+                                        showNewTask = true
+                                        clearInkSignal++
+                                    } else if (best == "tag" || best.startsWith("tag")) {
+                                        // FIX 3: Use capturedSelectedId instead of selectedTaskId
+                                        if (capturedSelectedId != null) {
+                                            taggingTaskId = capturedSelectedId
+                                            clearInkSignal++
+                                        } else {
+                                            Log.d("MLKit", "Tag recognized but no task was selected")
+                                        }
+                                    } else {
+                                        val shape = shapeRecognizer.recognizeAll(strokes)
+                                        val targetTask = capturedSelectedId?.let { id -> tasks.firstOrNull { it.id == id } }
+
+                                        if (targetTask != null) {
+                                            when (shape) {
+                                                is RecognizedShape.Checkmark -> {
+                                                    previousTasks = tasks
+                                                    moveTaskToCompleted(targetTask.id)
+                                                    selectedTaskId = null
+                                                    clearInkSignal++
+                                                    showUndoSnackbar("\"${targetTask.title}\" completed")
+                                                }
+                                                is RecognizedShape.XMark -> {
+                                                    previousTasks = tasks
+                                                    tasks = tasks.filter { it.id != targetTask.id }
+                                                    selectedTaskId = null
+                                                    clearInkSignal++
+                                                    showUndoSnackbar("\"${targetTask.title}\" deleted")
+                                                }
+                                                is RecognizedShape.UpArrow -> {
+                                                    val taskIndex = tasks.indexOfFirst { it.id == targetTask.id }
+                                                    if (taskIndex > 0) {
+                                                        previousTasks = tasks
+                                                        val newTasks = tasks.toMutableList()
+                                                        val movedTask = newTasks.removeAt(taskIndex)
+                                                        newTasks.add(taskIndex - 1, movedTask)
+                                                        tasks = newTasks
+                                                        showUndoSnackbar("\"${targetTask.title}\" moved up")
+                                                    }
+                                                    selectedTaskId = null
+                                                    clearInkSignal++
+                                                }
+                                                else -> {}
+                                            }
+                                        }
+                                    }
+                                }
+                        }
                     }
                 )
 
-                // Clear button — top left corner of drawing box
                 Text(
                     text = "✕ clear",
                     fontSize = 11.sp,
@@ -240,35 +290,6 @@ fun TaskListScreen() {
                         .clickable { clearInkSignal++ }
                         .padding(horizontal = 6.dp, vertical = 2.dp)
                 )
-
-                if (showNewTask) {
-                    TaskDialog(
-                        title = "New Task",
-                        onConfirm = { title ->
-                            tasks = tasks + Task(
-                                id = System.currentTimeMillis(),
-                                title = title,
-                                completed = false
-                            )
-                            showNewTask = false
-                        },
-                        onDismiss = { showNewTask = false }
-                    )
-                }
-
-                editingTask?.let { task ->
-                    TaskDialog(
-                        title = "Edit Task",
-                        initialText = task.title,
-                        onConfirm = { newTitle ->
-                            tasks = tasks.map {
-                                if (it.id == task.id) it.copy(title = newTitle) else it
-                            }
-                            editingTask = null
-                        },
-                        onDismiss = { editingTask = null }
-                    )
-                }
             }
         }
     }
