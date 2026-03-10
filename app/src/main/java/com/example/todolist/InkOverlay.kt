@@ -9,11 +9,13 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.input.pointer.pointerInput
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlin.math.sqrt
 
 data class TimedPoint(val x: Float, val y: Float, val t: Long)
 data class Stroke(val points: List<TimedPoint>) {
-    // Calculate the center/average position of the stroke
     fun getCenter(): Offset {
         if (points.isEmpty()) return Offset(0f, 0f)
         val avgX = points.map { it.x }.average().toFloat()
@@ -32,8 +34,11 @@ fun InkOverlay(
     var currentPoints by remember { mutableStateOf<List<TimedPoint>>(emptyList()) }
     var strokes by remember { mutableStateOf<List<Stroke>>(emptyList()) }
     val shapeRecognizer = remember { ShapeRecognizer() }
+    val scope = rememberCoroutineScope()
+    var debounceJob by remember { mutableStateOf<Job?>(null) }
 
     LaunchedEffect(clearInkSignal) {
+        debounceJob?.cancel()
         currentPoints = emptyList()
         strokes = emptyList()
     }
@@ -57,10 +62,16 @@ fun InkOverlay(
                             val newStroke = Stroke(currentPoints)
                             val newStrokes = strokes + newStroke
                             strokes = newStrokes
-
-                            val shape = shapeRecognizer.recognize(newStroke)
-                            onShapeRecognized(shape, newStroke)
                             onInkFinished(newStrokes)
+
+                            // Cancel any pending debounce and restart the 700ms window
+                            debounceJob?.cancel()
+                            debounceJob = scope.launch {
+                                delay(700)
+                                // Time's up — evaluate all accumulated strokes
+                                val shape = shapeRecognizer.recognizeAll(newStrokes)
+                                onShapeRecognized(shape, newStroke)
+                            }
                         }
                         currentPoints = emptyList()
                     }

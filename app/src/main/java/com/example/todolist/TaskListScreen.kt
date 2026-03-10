@@ -3,10 +3,12 @@ package com.example.todolist
 import android.util.Log
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -178,6 +180,19 @@ fun TaskListScreen() {
                             }
                         }
                 }
+            )
+
+            // Clear button — top left corner of drawing box
+            Text(
+                text = "✕ clear",
+                fontSize = 11.sp,
+                color = Color(0xFF888888),
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(4.dp)
+                    .background(Color(0xFFE0E0E0), RoundedCornerShape(4.dp))
+                    .clickable { clearInkSignal++ }
+                    .padding(horizontal = 6.dp, vertical = 2.dp)
             )
 
             if (showNewTask) {
