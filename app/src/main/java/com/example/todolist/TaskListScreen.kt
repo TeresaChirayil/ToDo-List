@@ -26,6 +26,7 @@ import com.google.mlkit.vision.digitalink.Ink
 fun TaskListScreen() {
     var tasks by remember { mutableStateOf(listOf<Task>()) }
     var showNewTask by remember { mutableStateOf(false) }
+    var editingTask by remember { mutableStateOf<Task?>(null) }
     var recognizer by remember { mutableStateOf<DigitalInkRecognizer?>(null) }
     var clearInkSignal by remember { mutableStateOf(0) }
     var selectedTaskId by remember { mutableStateOf<Long?>(null) }
@@ -84,6 +85,9 @@ fun TaskListScreen() {
                 onSelectTask = { id ->
                     Log.d("TaskSelection", "Selected task: $id")
                     selectedTaskId = if (selectedTaskId == id) null else id
+                },
+                onEditTask = { task ->
+                    editingTask = task
                 }
             )
         }
@@ -177,8 +181,9 @@ fun TaskListScreen() {
             )
 
             if (showNewTask) {
-                NewTaskDialog(
-                    onAdd = { title ->
+                TaskDialog(
+                    title = "New Task",
+                    onConfirm = { title ->
                         tasks = tasks + Task(
                             id = System.currentTimeMillis(),
                             title = title,
@@ -187,6 +192,20 @@ fun TaskListScreen() {
                         showNewTask = false
                     },
                     onDismiss = { showNewTask = false }
+                )
+            }
+
+            editingTask?.let { task ->
+                TaskDialog(
+                    title = "Edit Task",
+                    initialText = task.title,
+                    onConfirm = { newTitle ->
+                        tasks = tasks.map {
+                            if (it.id == task.id) it.copy(title = newTitle) else it
+                        }
+                        editingTask = null
+                    },
+                    onDismiss = { editingTask = null }
                 )
             }
         }

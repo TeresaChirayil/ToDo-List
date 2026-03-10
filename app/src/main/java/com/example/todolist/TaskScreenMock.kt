@@ -19,7 +19,8 @@ private val HintColor = Color(0xFF9AA0A6)
 fun TasksScreenMock(
     tasks: List<Task>,
     selectedTaskId: Long? = null,
-    onSelectTask: (Long) -> Unit = {}
+    onSelectTask: (Long) -> Unit = {},
+    onEditTask: (Task) -> Unit = {}
 ) {
     val (activeTasks, completedTasks) = tasks.partition { !it.completed }
     var completedExpanded by remember { mutableStateOf(true) }
@@ -44,7 +45,8 @@ fun TasksScreenMock(
                     title = task.title,
                     selected = task.id == selectedTaskId,
                     checked = false,
-                    onClick = { onSelectTask(task.id) }
+                    onClick = { onSelectTask(task.id) },
+                    onDoubleClick = { onEditTask(task) }
                 )
             }
 
@@ -64,7 +66,8 @@ fun TasksScreenMock(
                         title = task.title,
                         selected = task.id == selectedTaskId,
                         checked = true,
-                        onClick = { onSelectTask(task.id) }
+                        onClick = { onSelectTask(task.id) },
+                        onDoubleClick = { onEditTask(task) }
                     )
                 }
             }

@@ -1,26 +1,30 @@
 package com.example.todolist
-import androidx.compose.ui.graphics.Color
+
+import android.util.Log
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
-import android.util.Log
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.unit.dp
 
 private val PurpleAccent = Color(0xFF7C3AED)
 private val DividerColor = Color(0xFFE9E9EE)
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun TaskRow(
     title: String,
     selected: Boolean,
     checked: Boolean,
     highlighted: Boolean = false,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onDoubleClick: () -> Unit = {}
 ) {
     Column {
         Row(
@@ -33,10 +37,16 @@ fun TaskRow(
                         else -> Color.Transparent
                     }
                 )
-                .clickable(onClick = {
-                    Log.d("TaskRowClick", "Clicked on task: $title, selected=$selected")
-                    onClick()
-                })
+                .combinedClickable(
+                    onClick = {
+                        Log.d("TaskRowClick", "Clicked on task: $title, selected=$selected")
+                        onClick()
+                    },
+                    onDoubleClick = {
+                        Log.d("TaskRowDoubleClick", "Double clicked on task: $title")
+                        onDoubleClick()
+                    }
+                )
                 .heightIn(min = 64.dp)
                 .padding(horizontal = 16.dp),
             verticalAlignment = Alignment.CenterVertically
