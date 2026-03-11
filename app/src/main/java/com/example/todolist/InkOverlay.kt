@@ -29,7 +29,8 @@ fun InkOverlay(
     modifier: Modifier = Modifier,
     clearInkSignal: Int,
     onInkFinished: (List<Stroke>) -> Unit,
-    onShapeRecognized: (RecognizedShape, Stroke) -> Unit = { _, _ -> }
+    onShapeRecognized: (RecognizedShape, Stroke) -> Unit = { _, _ -> },
+    onStrokesSettled: (List<Stroke>) -> Unit = { _ -> }
 ) {
     var currentPoints by remember { mutableStateOf<List<TimedPoint>>(emptyList()) }
     var strokes by remember { mutableStateOf<List<Stroke>>(emptyList()) }
@@ -64,13 +65,23 @@ fun InkOverlay(
                             strokes = newStrokes
                             onInkFinished(newStrokes)
 
-                            // Cancel any pending debounce and restart the 700ms window
+                            // Checkmark is 1 stroke with a V-bend — fire fast
+                            // Single non-checkmark stroke might still get a second (X or !) — wait longer
+                            // 2+ strokes — gesture is likely complete
+                            val looksLikeCheckmark = newStrokes.size == 1 &&
+                                    shapeRecognizer.recognize(newStrokes.last()) is RecognizedShape.Checkmark
+                            val debounceMs = when {
+                                looksLikeCheckmark -> 500L
+                                newStrokes.size == 1 -> 1600L
+                                else -> 900L
+                            }
+
                             debounceJob?.cancel()
                             debounceJob = scope.launch {
-                                delay(700)
-                                // Time's up — evaluate all accumulated strokes
+                                delay(debounceMs)
                                 val shape = shapeRecognizer.recognizeAll(newStrokes)
                                 onShapeRecognized(shape, newStroke)
+                                onStrokesSettled(newStrokes)
                             }
                         }
                         currentPoints = emptyList()

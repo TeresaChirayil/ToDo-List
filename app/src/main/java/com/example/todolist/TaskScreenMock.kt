@@ -1,19 +1,16 @@
 package com.example.todolist
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.ui.graphics.Color
 
 private val DividerColor = Color(0xFFE9E9EE)
 private val HintColor = Color(0xFF9AA0A6)
@@ -27,11 +24,9 @@ fun TasksScreenMock(
 ) {
     val (activeTasks, completedTasks) = tasks.partition { !it.completed }
     var completedExpanded by remember { mutableStateOf(true) }
-    val listState = rememberLazyListState()
 
     Box(modifier = Modifier.fillMaxSize()) {
         LazyColumn(
-            state = listState,
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(bottom = 96.dp)
         ) {
@@ -47,8 +42,10 @@ fun TasksScreenMock(
             // Active tasks
             items(activeTasks, key = { it.id }) { task ->
                 TaskRow(
-                    task = task,
+                    title = task.title,
                     selected = task.id == selectedTaskId,
+                    checked = false,
+                    tag = task.tag,
                     onClick = { onSelectTask(task.id) },
                     onDoubleClick = { onEditTask(task) }
                 )
@@ -67,45 +64,14 @@ fun TasksScreenMock(
             if (completedExpanded) {
                 items(completedTasks, key = { it.id }) { task ->
                     TaskRow(
-                        task = task,
+                        title = task.title,
                         selected = task.id == selectedTaskId,
+                        checked = true,
+                        tag = task.tag,
                         onClick = { onSelectTask(task.id) },
                         onDoubleClick = { onEditTask(task) }
                     )
                 }
-            }
-        }
-
-        // Persistent Visual Scrollbar
-        val showScrollbar = tasks.size > 5
-        if (showScrollbar) {
-            BoxWithConstraints(
-                modifier = Modifier
-                    .align(Alignment.CenterEnd)
-                    .fillMaxHeight()
-                    .padding(end = 4.dp, top = 60.dp, bottom = 100.dp)
-                    .width(4.dp)
-            ) {
-                val viewHeight = maxHeight
-                val totalItemsCount = (activeTasks.size + completedTasks.size + 3).coerceAtLeast(1)
-                
-                val thumbHeight = remember(totalItemsCount, viewHeight) {
-                    (viewHeight / totalItemsCount.toFloat() * 2f).coerceIn(40.dp, viewHeight)
-                }
-                
-                val scrollOffset by remember(listState.firstVisibleItemIndex, totalItemsCount, viewHeight, thumbHeight) {
-                    derivedStateOf {
-                        val scrollPercent = listState.firstVisibleItemIndex.toFloat() / (totalItemsCount.toFloat()).coerceAtLeast(1f)
-                        (viewHeight - thumbHeight) * scrollPercent
-                    }
-                }
-
-                Box(
-                    modifier = Modifier
-                        .offset(y = scrollOffset)
-                        .size(width = 4.dp, height = thumbHeight)
-                        .background(Color.Gray.copy(alpha = 0.5f), RoundedCornerShape(2.dp))
-                )
             }
         }
 

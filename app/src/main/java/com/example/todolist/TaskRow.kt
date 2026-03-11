@@ -5,12 +5,12 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -21,8 +21,11 @@ private val DividerColor = Color(0xFFE9E9EE)
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun TaskRow(
-    task: Task,
+    title: String,
     selected: Boolean,
+    checked: Boolean,
+    highlighted: Boolean = false,
+    tag: String = "",
     onClick: () -> Unit,
     onDoubleClick: () -> Unit = {}
 ) {
@@ -33,17 +36,17 @@ fun TaskRow(
                 .background(
                     when {
                         selected -> Color(0xFFE8D5F2)
-                        task.isHighlighted -> Color(0xFFFFF9C4)
+                        highlighted -> Color(0xFFFFF9C4)
                         else -> Color.Transparent
                     }
                 )
                 .combinedClickable(
                     onClick = {
-                        Log.d("TaskRowClick", "Clicked on task: ${task.title}, selected=$selected")
+                        Log.d("TaskRowClick", "Clicked on task: $title, selected=$selected")
                         onClick()
                     },
                     onDoubleClick = {
-                        Log.d("TaskRowDoubleClick", "Double clicked on task: ${task.title}")
+                        Log.d("TaskRowDoubleClick", "Double clicked on task: $title")
                         onDoubleClick()
                     }
                 )
@@ -61,29 +64,23 @@ fun TaskRow(
 
             Spacer(Modifier.width(12.dp))
 
-            Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyLarge,
+                color = if (checked) Color.Gray else Color.Black,
+                textDecoration = if (checked) TextDecoration.LineThrough else TextDecoration.None,
+                modifier = Modifier.weight(1f)
+            )
+            if (tag.isNotEmpty()) {
+                Spacer(Modifier.width(8.dp))
                 Text(
-                    text = task.title,
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = if (task.completed) Color.Gray else Color.Black,
-                    textDecoration = if (task.completed) TextDecoration.LineThrough else TextDecoration.None
+                    text = tag,
+                    fontSize = 11.sp,
+                    color = PurpleAccent,
+                    modifier = Modifier
+                        .background(Color(0xFFF0E6FF), RoundedCornerShape(4.dp))
+                        .padding(horizontal = 6.dp, vertical = 2.dp)
                 )
-                
-                if (task.tag != null) {
-                    Spacer(Modifier.height(4.dp))
-                    Surface(
-                        color = PurpleAccent.copy(alpha = 0.1f),
-                        shape = RoundedCornerShape(4.dp)
-                    ) {
-                        Text(
-                            text = task.tag,
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = PurpleAccent,
-                            fontSize = 10.sp
-                        )
-                    }
-                }
             }
         }
 
