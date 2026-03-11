@@ -290,7 +290,9 @@ fun TaskListScreen() {
                                         showNewTask = true
                                         clearInkSignal++
                                     }
-                                    best == "tag" || best.startsWith("tag") -> {
+                                    best == "tag" || best.startsWith("tag") ||
+                                            best == "taq" || best == "lag" || best == "lay" ||
+                                            best == "lug" || best == "log" || best.startsWith("lag") -> {
                                         if (selectedTaskId != null) showTagPicker = true
                                         clearInkSignal++
                                     }

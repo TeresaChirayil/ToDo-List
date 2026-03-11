@@ -17,8 +17,9 @@ sealed class RecognizedShape {
 // ---------------------------------------------------------------------------
 
 private const val NUM_POINTS = 32
-private const val SCORE_THRESHOLD = 0.68f          // slightly lenient for X
-private const val SCORE_THRESHOLD_EXCLAMATION = 0.82f
+private const val SCORE_THRESHOLD         = 0.68f
+private const val SCORE_THRESHOLD_CHECKMARK   = 0.70f
+private const val SCORE_THRESHOLD_EXCLAMATION = 0.76f
 
 private data class PDPoint(val x: Float, val y: Float, val strokeIdx: Int)
 private data class Template(val name: String, val points: List<PDPoint>)
@@ -80,9 +81,16 @@ private fun pts(strokeIdx: Int, vararg xy: Float): List<PDPoint> {
 // Templates
 // ---------------------------------------------------------------------------
 
+// Checkmark: short down-left leg then long up-right leg
 private val TEMPLATE_CHECKMARK = Template(
     "checkmark",
     normalize(pts(0, 0f,40f, 10f,58f, 20f,72f, 32f,88f, 42f,100f, 56f,78f, 70f,55f, 84f,30f, 100f,0f))
+)
+
+// Wider/shallower checkmark
+private val TEMPLATE_CHECKMARK_WIDE = Template(
+    "checkmark",
+    normalize(pts(0, 0f,20f, 15f,45f, 28f,65f, 38f,85f, 46f,100f, 60f,72f, 74f,45f, 88f,20f, 100f,0f))
 )
 
 // Two-stroke X: \ then /
@@ -94,20 +102,34 @@ private val TEMPLATE_XMARK = Template(
     )
 )
 
-// One-stroke X: continuous crossing path
+// One-stroke X: top-left → bottom-right then back up-left → bottom-right
 private val TEMPLATE_XMARK_SINGLE = Template(
     "xmark",
     normalize(pts(0, 0f,0f, 25f,25f, 50f,50f, 75f,75f, 100f,100f,
         75f,25f, 50f,50f, 25f,75f, 0f,100f))
 )
 
-// One-stroke X drawn the other way: / then back \
-private val TEMPLATE_XMARK_SINGLE_ALT = Template(
+// Looping X: loop/teardrop then diagonal crossing through it
+private val TEMPLATE_XMARK_LOOP = Template(
     "xmark",
-    normalize(pts(0, 100f,0f, 75f,25f, 50f,50f, 25f,75f, 0f,100f,
-        25f,25f, 50f,50f, 75f,75f, 100f,100f))
+    normalize(pts(0,
+        20f,70f, 15f,50f, 20f,25f, 35f,8f, 55f,5f, 75f,15f,
+        85f,35f, 80f,55f, 60f,65f, 45f,60f, 35f,50f,
+        50f,65f, 65f,80f, 80f,95f, 95f,100f
+    ))
 )
 
+// Mirrored looping X
+private val TEMPLATE_XMARK_LOOP_MIRROR = Template(
+    "xmark",
+    normalize(pts(0,
+        80f,70f, 85f,50f, 80f,25f, 65f,8f, 45f,5f, 25f,15f,
+        15f,35f, 20f,55f, 40f,65f, 55f,60f, 65f,50f,
+        50f,65f, 35f,80f, 20f,95f, 5f,100f
+    ))
+)
+
+// Exclamation: vertical line (stroke 0) + dot (stroke 1)
 private val TEMPLATE_EXCLAMATION = Template(
     "exclamation",
     normalize(
@@ -116,12 +138,34 @@ private val TEMPLATE_EXCLAMATION = Template(
     )
 )
 
+// Exclamation with wider gap before dot
+private val TEMPLATE_EXCLAMATION_GAP = Template(
+    "exclamation",
+    normalize(
+        pts(0, 50f,0f, 50f,15f, 50f,30f, 50f,45f, 50f,60f) +
+                pts(1, 50f,82f, 50f,100f)
+    )
+)
+
+// Exclamation dot drawn as a small tick
+private val TEMPLATE_EXCLAMATION_TICK = Template(
+    "exclamation",
+    normalize(
+        pts(0, 50f,0f, 50f,20f, 50f,40f, 50f,60f, 50f,75f) +
+                pts(1, 42f,92f, 50f,96f, 58f,100f)
+    )
+)
+
 private val ALL_TEMPLATES = listOf(
     TEMPLATE_CHECKMARK,
+    TEMPLATE_CHECKMARK_WIDE,
     TEMPLATE_XMARK,
     TEMPLATE_XMARK_SINGLE,
-    TEMPLATE_XMARK_SINGLE_ALT,
-    TEMPLATE_EXCLAMATION
+    TEMPLATE_XMARK_LOOP,
+    TEMPLATE_XMARK_LOOP_MIRROR,
+    TEMPLATE_EXCLAMATION,
+    TEMPLATE_EXCLAMATION_GAP,
+    TEMPLATE_EXCLAMATION_TICK
 )
 
 // ---------------------------------------------------------------------------
@@ -155,23 +199,27 @@ class ShapeRecognizer {
 
         for (tmpl in ALL_TEMPLATES) {
             val d = cloudDistance(candidate, tmpl.points)
-            val score = distanceToScore(d)
-            Log.d("PDollar", "template=${tmpl.name}  dist=${"%.3f".format(d)}  score=${"%.3f".format(score)}")
-            if (score > bestScore) { bestScore = score; bestName = tmpl.name }
+            val s = distanceToScore(d)
+            Log.d("PDollar", "template=${tmpl.name}  score=${"%.3f".format(s)}")
+            if (s > bestScore) { bestScore = s; bestName = tmpl.name }
         }
 
         Log.d("PDollar", "BEST → $bestName  score=${"%.3f".format(bestScore)}  strokes=$strokeCount")
 
+        // Base threshold
         if (bestScore < SCORE_THRESHOLD) return RecognizedShape.Unknown
+
+        // Per-gesture thresholds
+        if (bestName == "checkmark"   && bestScore < SCORE_THRESHOLD_CHECKMARK)   return RecognizedShape.Unknown
         if (bestName == "exclamation" && bestScore < SCORE_THRESHOLD_EXCLAMATION) return RecognizedShape.Unknown
 
-        // Single-stroke X: allow if stroke crosses itself (direction reverses in both axes)
+        // Single-stroke X must actually cross itself
         if (bestName == "xmark" && strokeCount < 2 && !isCrossingStroke(rawPoints)) {
-            Log.d("PDollar", "Suppressing xmark — single stroke, no crossing detected")
+            Log.d("PDollar", "Suppressing xmark — single stroke, no crossing")
             return RecognizedShape.Unknown
         }
 
-        // Single straight diagonal must not become a checkmark (could be first stroke of X)
+        // Straight diagonal must not fire as checkmark (first leg of an X)
         if (bestName == "checkmark" && strokeCount == 1 && isStraightDiagonal(rawPoints)) {
             Log.d("PDollar", "Suppressing checkmark — straight diagonal")
             return RecognizedShape.Unknown
@@ -186,35 +234,35 @@ class ShapeRecognizer {
     }
 
     /**
-     * True if a single stroke crosses itself — signature of a one-stroke X.
-     * Lenient: only requires 1 x-flip OR 1 y-flip (not both), since
-     * sloppy X strokes may not fully reverse in both axes.
+     * Returns true if a single stroke crosses itself (signature of a one-stroke X or loop-X).
+     * Requires direction reversal in both X and Y axes — a real crossing changes both.
+     * Using both axes prevents a simple curved line from triggering.
      */
     private fun isCrossingStroke(pts: List<PDPoint>): Boolean {
         if (pts.size < 6) return false
         var xFlips = 0; var yFlips = 0
         var prevDx = 0f; var prevDy = 0f
         for (i in 1 until pts.size) {
-            val dx = pts[i].x - pts[i-1].x
-            val dy = pts[i].y - pts[i-1].y
+            val dx = pts[i].x - pts[i - 1].x
+            val dy = pts[i].y - pts[i - 1].y
             if (prevDx != 0f && dx * prevDx < 0) xFlips++
             if (prevDy != 0f && dy * prevDy < 0) yFlips++
             if (dx != 0f) prevDx = dx
             if (dy != 0f) prevDy = dy
         }
         Log.d("PDollar", "isCrossingStroke xFlips=$xFlips yFlips=$yFlips")
-        // Lenient: 1 flip in either axis is enough
-        return xFlips >= 1 || yFlips >= 2
+        // Require at least 1 flip in each axis (true crossing), OR many flips (looping X)
+        return (xFlips >= 1 && yFlips >= 1) || xFlips >= 3 || yFlips >= 3
     }
 
-    /** True if the stroke is basically a straight line (82%+ linearity) */
+    /** True if stroke is mostly a straight line (linearity > 80%) */
     private fun isStraightDiagonal(pts: List<PDPoint>): Boolean {
         if (pts.size < 4) return false
         val start = pts.first(); val end = pts.last()
-        val directDist = dist(start, end)
-        val pathLen = (1 until pts.size).sumOf { dist(pts[it - 1], pts[it]).toDouble() }.toFloat()
-        val linearity = if (pathLen > 0f) directDist / pathLen else 0f
+        val direct = dist(start, end)
+        val path = (1 until pts.size).sumOf { dist(pts[it - 1], pts[it]).toDouble() }.toFloat()
+        val linearity = if (path > 0f) direct / path else 0f
         Log.d("PDollar", "isStraightDiagonal linearity=${"%.3f".format(linearity)}")
-        return linearity > 0.82f
+        return linearity > 0.80f
     }
 }
