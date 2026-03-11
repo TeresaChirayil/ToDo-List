@@ -2,8 +2,6 @@ package com.example.todolist
 
 import android.util.Log
 import kotlin.math.sqrt
-import kotlin.math.atan2
-import kotlin.math.abs
 
 data class Point(val x: Float, val y: Float)
 
@@ -14,196 +12,172 @@ sealed class RecognizedShape {
     object Unknown : RecognizedShape()
 }
 
+// ---------------------------------------------------------------------------
+// $P Point-Cloud Recognizer (Vatavu, Anthony, Wobbrock 2012)
+// ---------------------------------------------------------------------------
+
+private const val NUM_POINTS = 32          // resample every gesture to this many pts
+private const val SCORE_THRESHOLD = 0.70f  // default minimum score (0..1) to accept a match
+private const val SCORE_THRESHOLD_EXCLAMATION = 0.82f  // stricter threshold for !
+
+private data class PDPoint(val x: Float, val y: Float, val strokeIdx: Int)
+
+private data class Template(val name: String, val points: List<PDPoint>)
+
+private fun dist(a: PDPoint, b: PDPoint) =
+    sqrt((a.x - b.x) * (a.x - b.x) + (a.y - b.y) * (a.y - b.y))
+
+/** Uniform index-based resampling to exactly n points */
+private fun uniformSample(pts: List<PDPoint>, n: Int): List<PDPoint> {
+    if (pts.size < 2) return List(n) { pts.firstOrNull() ?: PDPoint(0f, 0f, 0) }
+    return (0 until n).map { i ->
+        val idx = (i.toFloat() / (n - 1) * (pts.size - 1)).toInt().coerceIn(0, pts.lastIndex)
+        pts[idx]
+    }
+}
+
+/** Scale all points so the bounding box fits in a unit square */
+private fun scaleToSquare(pts: List<PDPoint>): List<PDPoint> {
+    val minX = pts.minOf { it.x }; val maxX = pts.maxOf { it.x }
+    val minY = pts.minOf { it.y }; val maxY = pts.maxOf { it.y }
+    val scale = maxOf(maxX - minX, maxY - minY).let { if (it == 0f) 1f else it }
+    return pts.map { PDPoint((it.x - minX) / scale, (it.y - minY) / scale, it.strokeIdx) }
+}
+
+/** Translate centroid to origin */
+private fun translateToOrigin(pts: List<PDPoint>): List<PDPoint> {
+    val cx = pts.map { it.x }.average().toFloat()
+    val cy = pts.map { it.y }.average().toFloat()
+    return pts.map { PDPoint(it.x - cx, it.y - cy, it.strokeIdx) }
+}
+
+/** Full $P normalization: resample → scale → center */
+private fun normalize(pts: List<PDPoint>): List<PDPoint> =
+    translateToOrigin(scaleToSquare(uniformSample(pts, NUM_POINTS)))
+
+/** $P greedy nearest-neighbor cloud distance */
+private fun cloudDistance(candidate: List<PDPoint>, tmpl: List<PDPoint>): Float {
+    val matched = BooleanArray(candidate.size)
+    var sum = 0f
+    for (t in tmpl) {
+        var best = Float.MAX_VALUE
+        var bestIdx = -1
+        for (i in candidate.indices) {
+            if (!matched[i]) {
+                val d = dist(candidate[i], t)
+                if (d < best) { best = d; bestIdx = i }
+            }
+        }
+        if (bestIdx >= 0) { matched[bestIdx] = true; sum += best }
+    }
+    return sum
+}
+
+/** Convert distance to a 0..1 confidence score */
+private fun distanceToScore(d: Float): Float = 1f / (1f + d / NUM_POINTS)
+
+// ---------------------------------------------------------------------------
+// Template definitions  (arbitrary ~100×100 coordinate space, normalized)
+// ---------------------------------------------------------------------------
+
+private fun pts(strokeIdx: Int, vararg xy: Float): List<PDPoint> {
+    val list = mutableListOf<PDPoint>()
+    var i = 0
+    while (i < xy.size - 1) { list.add(PDPoint(xy[i], xy[i + 1], strokeIdx)); i += 2 }
+    return list
+}
+
+private val TEMPLATE_CHECKMARK = Template(
+    "checkmark",
+    normalize(
+        // One stroke: down-left then up-right (V shape)
+        pts(
+            0,
+            0f, 40f,
+            10f, 58f,
+            20f, 72f,
+            32f, 88f,
+            42f, 100f,   // bottom of the V
+            56f, 78f,
+            70f, 55f,
+            84f, 30f,
+            100f, 0f
+        )
+    )
+)
+
+private val TEMPLATE_XMARK = Template(
+    "xmark",
+    normalize(
+        // Two strokes: \ (stroke 0) and / (stroke 1)
+        pts(0, 0f, 0f, 25f, 25f, 50f, 50f, 75f, 75f, 100f, 100f) +
+                pts(1, 100f, 0f, 75f, 25f, 50f, 50f, 25f, 75f, 0f, 100f)
+    )
+)
+
+private val TEMPLATE_EXCLAMATION = Template(
+    "exclamation",
+    normalize(
+        // Two strokes: tall vertical line (stroke 0) + short dot below (stroke 1)
+        pts(0, 50f, 0f, 50f, 18f, 50f, 36f, 50f, 54f, 50f, 72f) +
+                pts(1, 50f, 88f, 51f, 100f)
+    )
+)
+
+private val ALL_TEMPLATES = listOf(TEMPLATE_CHECKMARK, TEMPLATE_XMARK, TEMPLATE_EXCLAMATION)
+
+// ---------------------------------------------------------------------------
+// ShapeRecognizer — public API is unchanged
+// ---------------------------------------------------------------------------
+
 class ShapeRecognizer {
 
+    /**
+     * Recognise across all accumulated strokes using $P.
+     * All strokes are concatenated into one point cloud so single- and
+     * multi-stroke gestures are handled uniformly — no separate heuristics.
+     */
     fun recognizeAll(strokes: List<Stroke>): RecognizedShape {
         if (strokes.isEmpty()) return RecognizedShape.Unknown
-
-        if (strokes.size >= 2) {
-            val last2 = strokes.takeLast(2)
-            val s1 = last2[0]
-            val s2 = last2[1]
-
-            if (isTwoStrokeX(s1, s2)) {
-                Log.d("ShapeRecognition", "2-stroke X detected")
-                return RecognizedShape.XMark(0.9f)
-            }
-
-            if (isTwoStrokeExclamation(s1, s2)) {
-                Log.d("ShapeRecognition", "Exclamation mark detected")
-                return RecognizedShape.UpArrow(0.9f)
-            }
+        val allPoints = strokes.flatMapIndexed { si, stroke ->
+            stroke.points.map { PDPoint(it.x, it.y, si) }
         }
-
-        return recognize(strokes.last())
+        return matchCloud(allPoints)
     }
 
+    /** Single-stroke convenience method (kept for compatibility with InkOverlay). */
     fun recognize(stroke: Stroke): RecognizedShape {
-        if (stroke.points.size < 5) return RecognizedShape.Unknown
+        val pts = stroke.points.map { PDPoint(it.x, it.y, 0) }
+        return matchCloud(pts)
+    }
 
-        try {
-            val points = stroke.points.map { Point(it.x, it.y) }
+    // -----------------------------------------------------------------------
 
-            val linearity = calculateLinearity(points)
-            val directionChanges = countDirectionChanges(points)
-            val closedRatio = calculateClosedLoopRatio(points)
-            val aspectRatio = calculateAspectRatio(points)
+    private fun matchCloud(rawPoints: List<PDPoint>): RecognizedShape {
+        if (rawPoints.size < 4) return RecognizedShape.Unknown
 
-            Log.d("Geometry", "Linearity: $linearity, DirChanges: $directionChanges, Closed: $closedRatio, Aspect: $aspectRatio")
+        val candidate = normalize(rawPoints)
 
-            val checkScore = scoreCheckmark(linearity, directionChanges, aspectRatio, closedRatio)
+        var bestScore = -1f
+        var bestName = ""
 
-            Log.d("ShapeScores", "Check: $checkScore")
-
-            return when {
-                checkScore >= 0.55f -> RecognizedShape.Checkmark(checkScore)
-                else -> RecognizedShape.Unknown
-            }
-
-        } catch (e: Exception) {
-            Log.e("Geometry", "Recognition error: ${e.message}")
-            return RecognizedShape.Unknown
+        for (tmpl in ALL_TEMPLATES) {
+            val d = cloudDistance(candidate, tmpl.points)
+            val score = distanceToScore(d)
+            Log.d("PDollar", "template=${tmpl.name}  dist=${"%.3f".format(d)}  score=${"%.3f".format(score)}")
+            if (score > bestScore) { bestScore = score; bestName = tmpl.name }
         }
-    }
 
-    // ✗ X: two crossing diagonal strokes (\ and /)
-    private fun isTwoStrokeX(s1: Stroke, s2: Stroke): Boolean {
-        val p1 = s1.points.map { Point(it.x, it.y) }
-        val p2 = s2.points.map { Point(it.x, it.y) }
-        if (p1.size < 3 || p2.size < 3) return false
+        Log.d("PDollar", "BEST → $bestName  score=${"%.3f".format(bestScore)}  threshold=$SCORE_THRESHOLD")
 
-        val lin1 = calculateLinearity(p1)
-        val lin2 = calculateLinearity(p2)
-        if (lin1 < 0.7f || lin2 < 0.7f) return false
+        if (bestScore < SCORE_THRESHOLD) return RecognizedShape.Unknown
+        if (bestName == "exclamation" && bestScore < SCORE_THRESHOLD_EXCLAMATION) return RecognizedShape.Unknown
 
-        val minX1 = p1.minOf { it.x }; val maxX1 = p1.maxOf { it.x }
-        val minY1 = p1.minOf { it.y }; val maxY1 = p1.maxOf { it.y }
-        val minX2 = p2.minOf { it.x }; val maxX2 = p2.maxOf { it.x }
-        val minY2 = p2.minOf { it.y }; val maxY2 = p2.maxOf { it.y }
-
-        val overlapX = minOf(maxX1, maxX2) - maxOf(minX1, minX2)
-        val overlapY = minOf(maxY1, maxY2) - maxOf(minY1, minY2)
-        val minDim = minOf(maxX1 - minX1, maxY1 - minY1, maxX2 - minX2, maxY2 - minY2)
-
-        if (overlapX < minDim * 0.3f || overlapY < minDim * 0.3f) return false
-
-        val dir1 = diagonalDirection(p1)
-        val dir2 = diagonalDirection(p2)
-
-        return dir1 != 0 && dir2 != 0 && dir1 != dir2
-    }
-
-    private fun diagonalDirection(points: List<Point>): Int {
-        val start = points.first()
-        val end = points.last()
-        val dx = end.x - start.x
-        val dy = end.y - start.y
-        val pathLen = calculatePathLength(points)
-        if (abs(dx) < pathLen * 0.2f || abs(dy) < pathLen * 0.2f) return 0
-        return if ((dx > 0 && dy > 0) || (dx < 0 && dy < 0)) 1 else -1
-    }
-
-    private fun isTwoStrokeExclamation(s1: Stroke, s2: Stroke): Boolean {
-        val p1 = s1.points.map { Point(it.x, it.y) }
-        val p2 = s2.points.map { Point(it.x, it.y) }
-        if (p1.size < 2 || p2.size < 2) return false
-
-        val isLine1 = isVerticalLine(p1)
-        val isLine2 = isVerticalLine(p2)
-
-        if (!isLine1 || !isLine2) return false
-
-        val height1 = p1.maxOf { it.y } - p1.minOf { it.y }
-        val height2 = p2.maxOf { it.y } - p2.minOf { it.y }
-
-        val (linePoints, dotPoints) = if (height1 > height2) Pair(p1, p2) else Pair(p2, p1)
-        val lineHeight = linePoints.maxOf { it.y } - linePoints.minOf { it.y }
-        val dotHeight  = dotPoints.maxOf  { it.y } - dotPoints.minOf  { it.y }
-
-        if (lineHeight < dotHeight * 3f) return false
-
-        val lineMaxY = linePoints.maxOf { it.y }
-        val dotMidY  = dotPoints.map { it.y }.average().toFloat()
-        val dotBelowLine = dotMidY > lineMaxY - lineHeight * 0.2f
-
-        val lineMidX = (linePoints.minOf { it.x } + linePoints.maxOf { it.x }) / 2f
-        val dotMidX  = dotPoints.map { it.x }.average().toFloat()
-        val dotAligned = abs(dotMidX - lineMidX) < lineHeight * 0.6f
-
-        return dotBelowLine && dotAligned
-    }
-
-    private fun isVerticalLine(points: List<Point>): Boolean {
-        val lin = calculateLinearity(points)
-        val minX = points.minOf { it.x }; val maxX = points.maxOf { it.x }
-        val minY = points.minOf { it.y }; val maxY = points.maxOf { it.y }
-        val width = maxX - minX
-        val height = maxY - minY
-        val aspectRatio = if (width > 0) height / width else 999f
-        return lin > 0.75f && aspectRatio > 2.5f && height > 40f
-    }
-
-    private fun scoreCheckmark(linearity: Float, dirChanges: Int, aspectRatio: Float, closedRatio: Float): Float {
-        var score = 0f
-        if (dirChanges < 1) return 0f
-        if (linearity > 0.88f) return 0f
-        if (dirChanges in 1..3) score += 0.25f
-        if (linearity in 0.35f..0.80f) score += 0.35f
-        if (aspectRatio < 2.0f) score += 0.2f
-        if (closedRatio < 0.4f) score += 0.2f
-        return score
-    }
-
-    private fun calculateLinearity(points: List<Point>): Float {
-        if (points.size < 2) return 0f
-        val start = points.first()
-        val end = points.last()
-        val directDistance = sqrt((end.x - start.x).pow(2) + (end.y - start.y).pow(2))
-        val pathLength = calculatePathLength(points)
-        return if (pathLength > 0) directDistance / pathLength else 0f
-    }
-
-    private fun countDirectionChanges(points: List<Point>): Int {
-        if (points.size < 3) return 0
-        var changes = 0
-        for (i in 1 until points.size - 1) {
-            val angle1 = atan2(points[i].y - points[i-1].y, points[i].x - points[i-1].x)
-            val angle2 = atan2(points[i+1].y - points[i].y, points[i+1].x - points[i].x)
-            val angleDiff = abs(angle2 - angle1)
-            if (angleDiff > 0.7f && angleDiff < 3.14f - 0.7f) changes++
+        return when (bestName) {
+            "checkmark"   -> RecognizedShape.Checkmark(bestScore)
+            "xmark"       -> RecognizedShape.XMark(bestScore)
+            "exclamation" -> RecognizedShape.UpArrow(bestScore)
+            else          -> RecognizedShape.Unknown
         }
-        return changes
-    }
-
-    private fun calculateClosedLoopRatio(points: List<Point>): Float {
-        if (points.size < 10) return 0f
-        val start = points.first()
-        val end = points.last()
-        val distance = sqrt((end.x - start.x).pow(2) + (end.y - start.y).pow(2))
-        val pathLength = calculatePathLength(points)
-        return (pathLength - distance) / pathLength
-    }
-
-    private fun calculateAspectRatio(points: List<Point>): Float {
-        val minX = points.minOf { it.x }; val maxX = points.maxOf { it.x }
-        val minY = points.minOf { it.y }; val maxY = points.maxOf { it.y }
-        val width = maxX - minX; val height = maxY - minY
-        return if (width > 0 && height > 0) height / width else 1f
-    }
-
-    private fun calculatePathLength(points: List<Point>): Float {
-        var length = 0f
-        for (i in 1 until points.size) {
-            val dx = points[i].x - points[i-1].x
-            val dy = points[i].y - points[i-1].y
-            length += sqrt(dx * dx + dy * dy)
-        }
-        return length
-    }
-
-    private fun Float.pow(exp: Int): Float {
-        var result = 1f
-        repeat(exp) { result *= this }
-        return result
     }
 }
