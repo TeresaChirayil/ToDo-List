@@ -105,6 +105,7 @@ fun TaskListScreen() {
     var recognizer by remember { mutableStateOf<DigitalInkRecognizer?>(null) }
     var clearInkSignal by remember { mutableStateOf(0) }
     var selectedTaskId by remember { mutableStateOf<Long?>(null) }
+    var lastGestureWasShape by remember { mutableStateOf(false) }
 
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
@@ -218,12 +219,7 @@ fun TaskListScreen() {
                     onShapeRecognized = { shape, stroke ->
                         Log.d("ShapeRecognition", "Shape: $shape, selectedTask: $selectedTaskId")
 
-                        val strokeLength = stroke.points.size
-
-                        if (shape is RecognizedShape.Unknown && strokeLength > 25) {
-                            Log.d("Text", "Unknown shape - likely text")
-                            return@InkOverlay
-                        }
+                        if (shape is RecognizedShape.Unknown) return@InkOverlay
 
                         val targetTask = selectedTaskId?.let { id ->
                             tasks.firstOrNull { it.id == id }
@@ -234,6 +230,7 @@ fun TaskListScreen() {
 
                         when (shape) {
                             is RecognizedShape.Checkmark -> {
+                                lastGestureWasShape = true
                                 Log.d("Checkmark", "Marking '${targetTask.title}' as complete")
                                 previousTasks = tasks
                                 moveTaskToCompleted(targetTask.id)
@@ -243,6 +240,7 @@ fun TaskListScreen() {
                             }
 
                             is RecognizedShape.XMark -> {
+                                lastGestureWasShape = true
                                 Log.d("XMark", "Deleting '${targetTask.title}'")
                                 previousTasks = tasks
                                 tasks = tasks.filter { it.id != targetTask.id }
@@ -252,15 +250,20 @@ fun TaskListScreen() {
                             }
 
                             is RecognizedShape.UpArrow -> {
+                                lastGestureWasShape = true
                                 Log.d("UpArrow", "Moving '${targetTask.title}' up")
-                                val taskIndex = tasks.indexOfFirst { it.id == targetTask.id }
-                                if (taskIndex > 0) {
+                                val activeTasks = tasks.filter { !it.completed }
+                                val completedTasks = tasks.filter { it.completed }
+                                val activeIndex = activeTasks.indexOfFirst { it.id == targetTask.id }
+                                if (activeIndex > 0) {
                                     previousTasks = tasks
-                                    val newTasks = tasks.toMutableList()
-                                    val movedTask = newTasks.removeAt(taskIndex)
-                                    newTasks.add(taskIndex - 1, movedTask)
-                                    tasks = newTasks
+                                    val newActive = activeTasks.toMutableList()
+                                    val movedTask = newActive.removeAt(activeIndex)
+                                    newActive.add(activeIndex - 1, movedTask)
+                                    tasks = newActive + completedTasks
                                     showUndoSnackbar("\"${targetTask.title}\" moved up")
+                                } else if (activeIndex == 0) {
+                                    showUndoSnackbar("\"${targetTask.title}\" is already at the top")
                                 }
                                 selectedTaskId = null
                                 clearInkSignal++
@@ -271,6 +274,10 @@ fun TaskListScreen() {
                     },
                     onInkFinished = { _ -> },
                     onStrokesSettled = { strokes ->
+                        if (lastGestureWasShape) {
+                            lastGestureWasShape = false
+                            return@InkOverlay
+                        }
                         val r = recognizer ?: return@InkOverlay
                         val inkBuilder = Ink.builder()
                         strokes.forEach { stroke ->
@@ -290,9 +297,7 @@ fun TaskListScreen() {
                                         showNewTask = true
                                         clearInkSignal++
                                     }
-                                    best == "tag" || best.startsWith("tag") ||
-                                            best == "taq" || best == "lag" || best == "lay" ||
-                                            best == "lug" || best == "log" || best.startsWith("lag") -> {
+                                    best == "tag" || best.startsWith("tag") -> {
                                         if (selectedTaskId != null) showTagPicker = true
                                         clearInkSignal++
                                     }

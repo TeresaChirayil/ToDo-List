@@ -65,15 +65,15 @@ fun InkOverlay(
                             strokes = newStrokes
                             onInkFinished(newStrokes)
 
-                            // Checkmark is 1 stroke with a V-bend — fire fast
-                            // Single non-checkmark stroke might still get a second (X or !) — wait longer
+                            // Checkmark is 1 stroke — fire fast if it looks like one
+                            // Single non-checkmark stroke might get a second (X or !) — wait longer
                             // 2+ strokes — gesture is likely complete
                             val looksLikeCheckmark = newStrokes.size == 1 &&
-                                    shapeRecognizer.recognize(newStrokes.last()) is RecognizedShape.Checkmark
+                                    shapeRecognizer.looksLikeCheckmarkFast(newStrokes.last())
                             val debounceMs = when {
                                 looksLikeCheckmark -> 500L
-                                newStrokes.size == 1 -> 1600L
-                                else -> 900L
+                                newStrokes.size == 1 -> 2500L
+                                else -> 1200L
                             }
 
                             debounceJob?.cancel()
@@ -81,6 +81,7 @@ fun InkOverlay(
                                 delay(debounceMs)
                                 val shape = shapeRecognizer.recognizeAll(newStrokes)
                                 onShapeRecognized(shape, newStroke)
+                                // Always send to ML Kit — TaskListScreen ignores text if a gesture already fired
                                 onStrokesSettled(newStrokes)
                             }
                         }
