@@ -7,13 +7,13 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import androidx.compose.material3.MaterialTheme
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.material3.Text
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.ui.graphics.Color
 
 private val DividerColor = Color(0xFFE9E9EE)
-private val HintColor = Color(0xFF9AA0A6)
 
 @Composable
 fun TasksScreenMock(
@@ -33,13 +33,14 @@ fun TasksScreenMock(
             item {
                 Text(
                     text = "Tasks",
-                    style = MaterialTheme.typography.headlineMedium,
-                    modifier = Modifier.padding(start = 16.dp, top = 18.dp, bottom = 12.dp)
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color(0xFF444444),
+                    modifier = Modifier.padding(start = 16.dp, top = 12.dp, bottom = 8.dp)
                 )
                 HorizontalDivider(color = DividerColor, thickness = 1.dp)
             }
 
-            // Active tasks
             items(activeTasks, key = { it.id }) { task ->
                 TaskRow(
                     title = task.title,
@@ -51,7 +52,6 @@ fun TasksScreenMock(
                 )
             }
 
-            // Completed section - always visible
             item {
                 Spacer(modifier = Modifier.height(6.dp))
                 CompletedHeader(
@@ -77,8 +77,9 @@ fun TasksScreenMock(
 
         Text(
             text = "Write 'new' to add a task",
-            color = HintColor,
-            style = MaterialTheme.typography.bodyMedium,
+            color = Color(0xFF444444),
+            fontSize = 16.sp,
+            fontWeight = FontWeight.Bold,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .padding(bottom = 24.dp)

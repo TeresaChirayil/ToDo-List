@@ -34,7 +34,6 @@ import kotlinx.coroutines.launch
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.RadioButtonDefaults
 import androidx.compose.material3.Surface
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 
 
@@ -178,12 +177,20 @@ fun TaskListScreen() {
                 .background(Color.White)
                 .padding(innerPadding)
         ) {
-            Text(
-                text = "Tasks",
-                fontSize = 28.sp,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(16.dp)
-            )
+            Column(modifier = Modifier.padding(start = 16.dp, top = 16.dp, bottom = 4.dp)) {
+                Text(
+                    text = "To Do List",
+                    fontSize = 28.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFF1A1A1A)
+                )
+                Text(
+                    text = "gestures and handwriting",
+                    fontSize = 13.sp,
+                    color = Color(0xFF9E9E9E),
+                    fontWeight = FontWeight.Normal
+                )
+            }
 
             Box(
                 modifier = Modifier
@@ -203,18 +210,44 @@ fun TaskListScreen() {
 
             HorizontalDivider(thickness = 2.dp, color = Color(0xFFE0E0E0))
 
+            // Gesture Canvas section label
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                HorizontalDivider(
+                    modifier = Modifier.weight(1f),
+                    thickness = 1.dp,
+                    color = Color(0xFFCCCCCC)
+                )
+                Text(
+                    text = "  Gesture Canvas  ",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color(0xFF888888)
+                )
+                HorizontalDivider(
+                    modifier = Modifier.weight(1f),
+                    thickness = 1.dp,
+                    color = Color(0xFFCCCCCC)
+                )
+            }
+
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(280.dp)
-                    .background(Color(0xFFF0F0F0))
-                    .border(2.dp, Color(0xFFCCCCCC), RoundedCornerShape(8.dp))
+                    .height(250.dp)
+                    .padding(horizontal = 12.dp)
+                    .background(Color.White, RoundedCornerShape(8.dp))
+                    .border(2.dp, Color(0xFF757575), RoundedCornerShape(8.dp))
                     .padding(8.dp)
             ) {
                 InkOverlay(
                     modifier = Modifier
                         .fillMaxSize()
-                        .background(Color(0xFFF0F0F0), RoundedCornerShape(4.dp)),
+                        .background(Color.White, RoundedCornerShape(4.dp)),
                     clearInkSignal = clearInkSignal,
                     onShapeRecognized = { shape, stroke ->
                         Log.d("ShapeRecognition", "Shape: $shape, selectedTask: $selectedTaskId")
@@ -293,11 +326,11 @@ fun TaskListScreen() {
                                     ?: return@addOnSuccessListener
                                 Log.d("MLKit", "Settled: $best")
                                 when {
-                                    best == "new" || best.startsWith("new") -> {
+                                    best == "new" || best.startsWith("new") || best == "add" || best == "create" -> {
                                         showNewTask = true
                                         clearInkSignal++
                                     }
-                                    best == "tag" || best.startsWith("tag") -> {
+                                    best == "tag" || best.startsWith("tag") || best == "label" || best.startsWith("label") -> {
                                         if (selectedTaskId != null) showTagPicker = true
                                         clearInkSignal++
                                     }
@@ -306,17 +339,18 @@ fun TaskListScreen() {
                     }
                 )
 
-                // Clear button — top left corner of drawing box
+                // Clear button — top left corner of drawing box, more visible
                 Text(
                     text = "✕ clear",
-                    fontSize = 11.sp,
-                    color = Color(0xFF888888),
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = Color(0xFF444444),
                     modifier = Modifier
                         .align(Alignment.TopStart)
                         .padding(4.dp)
-                        .background(Color(0xFFE0E0E0), RoundedCornerShape(4.dp))
+                        .background(Color(0xFFD0D0D0), RoundedCornerShape(4.dp))
                         .clickable { clearInkSignal++ }
-                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                        .padding(horizontal = 8.dp, vertical = 4.dp)
                 )
 
                 if (showNewTask) {

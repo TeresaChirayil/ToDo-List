@@ -16,6 +16,7 @@ private const val NUM_POINTS = 32
 private const val SCORE_THRESHOLD = 0.68f
 private const val SCORE_THRESHOLD_CHECKMARK = 0.70f
 private const val SCORE_THRESHOLD_EXCLAMATION = 0.76f
+private const val SCORE_THRESHOLD_ARROW = 0.72f
 
 private data class PDPoint(val x: Float, val y: Float, val strokeIdx: Int)
 private data class Template(val name: String, val points: List<PDPoint>)
@@ -139,6 +140,29 @@ private val TEMPLATE_EXCLAMATION_TICK = Template(
     )
 )
 
+private val TEMPLATE_ARROW_UP = Template(
+    "arrow",
+    normalize(
+        pts(0, 50f,0f, 25f,40f, 0f,80f) +
+                pts(1, 50f,0f, 75f,40f, 100f,80f)
+    )
+)
+
+private val TEMPLATE_ARROW_UP_TALL = Template(
+    "arrow",
+    normalize(
+        pts(0, 50f,0f, 30f,50f, 10f,100f) +
+                pts(1, 50f,0f, 70f,50f, 90f,100f)
+    )
+)
+
+private val TEMPLATE_ARROW_UP_SINGLE = Template(
+    "arrow",
+    normalize(pts(0,
+        0f,80f, 25f,40f, 50f,0f, 75f,40f, 100f,80f
+    ))
+)
+
 private val ALL_TEMPLATES = listOf(
     TEMPLATE_CHECKMARK,
     TEMPLATE_CHECKMARK_WIDE,
@@ -148,7 +172,10 @@ private val ALL_TEMPLATES = listOf(
     TEMPLATE_XMARK_LOOP_MIRROR,
     TEMPLATE_EXCLAMATION,
     TEMPLATE_EXCLAMATION_GAP,
-    TEMPLATE_EXCLAMATION_TICK
+    TEMPLATE_EXCLAMATION_TICK,
+    TEMPLATE_ARROW_UP,
+    TEMPLATE_ARROW_UP_TALL,
+    TEMPLATE_ARROW_UP_SINGLE
 )
 
 class ShapeRecognizer {
@@ -175,12 +202,19 @@ class ShapeRecognizer {
 
         var bestScore = -1f
         var bestName = ""
+        var secondScore = -1f
+        var secondName = ""
 
         for (tmpl in ALL_TEMPLATES) {
             val d = cloudDistance(candidate, tmpl.points)
             val s = distanceToScore(d)
             Log.d("PDollar", "template=${tmpl.name}  score=${"%.3f".format(s)}")
-            if (s > bestScore) { bestScore = s; bestName = tmpl.name }
+            if (s > bestScore) {
+                secondScore = bestScore; secondName = bestName
+                bestScore = s; bestName = tmpl.name
+            } else if (s > secondScore && tmpl.name != bestName) {
+                secondScore = s; secondName = tmpl.name
+            }
         }
 
         Log.d("PDollar", "BEST → $bestName  score=${"%.3f".format(bestScore)}  strokes=$strokeCount")
@@ -191,12 +225,24 @@ class ShapeRecognizer {
 
         if (bestName == "exclamation") {
             if (strokeCount < 2) {
-                Log.d("PDollar", "Suppressing exclamation — only 1 stroke")
-                return RecognizedShape.Unknown
-            }
-            if (!dotIsBelowLine(rawPoints)) {
-                Log.d("PDollar", "Suppressing exclamation — dot not below line or too wide")
-                return RecognizedShape.Unknown
+                Log.d("PDollar", "Suppressing exclamation — only 1 stroke, checking arrow fallback")
+                if (isTwoStrokeArrow(rawPoints) || isArrowUp(rawPoints)) {
+                    Log.d("PDollar", "Falling back to arrow (single stroke V)")
+                    bestName = "arrow"
+                } else if (secondName == "checkmark" && secondScore >= SCORE_THRESHOLD_CHECKMARK) {
+                    Log.d("PDollar", "Falling back to checkmark score=${"%.3f".format(secondScore)}")
+                    bestName = "checkmark"; bestScore = secondScore
+                } else {
+                    return RecognizedShape.Unknown
+                }
+            } else if (!dotIsBelowLine(rawPoints)) {
+                Log.d("PDollar", "Suppressing exclamation — dot not below line, checking arrow fallback")
+                if (isTwoStrokeArrow(rawPoints)) {
+                    Log.d("PDollar", "Falling back to arrow (2-stroke V)")
+                    bestName = "arrow"
+                } else {
+                    return RecognizedShape.Unknown
+                }
             }
         }
 
@@ -229,12 +275,71 @@ class ShapeRecognizer {
             return RecognizedShape.Unknown
         }
 
+        if (bestName == "arrow" && bestScore < SCORE_THRESHOLD_ARROW) return RecognizedShape.Unknown
+
+        if (bestName == "arrow") {
+            if (!isArrowUp(rawPoints)) {
+                Log.d("PDollar", "Suppressing arrow — does not point upward")
+                return RecognizedShape.Unknown
+            }
+        }
+
         return when (bestName) {
             "checkmark"   -> RecognizedShape.Checkmark(bestScore)
             "xmark"       -> RecognizedShape.XMark(bestScore)
             "exclamation" -> RecognizedShape.UpArrow(bestScore)
+            "arrow"       -> RecognizedShape.UpArrow(bestScore)
             else          -> RecognizedShape.Unknown
         }
+    }
+
+    private fun isTwoStrokeArrow(pts: List<PDPoint>): Boolean {
+        val stroke0 = pts.filter { it.strokeIdx == 0 }
+        val stroke1 = pts.filter { it.strokeIdx == 1 }
+        if (stroke0.size < 2 || stroke1.size < 2) return false
+
+        // each stroke should be roughly linear
+        val lin0 = linearity(stroke0)
+        val lin1 = linearity(stroke1)
+        if (lin0 < 0.4f || lin1 < 0.4f) return false
+
+        // both strokes should start near the same top point (the arrow tip)
+        val top0 = stroke0.minByOrNull { it.y } ?: return false
+        val top1 = stroke1.minByOrNull { it.y } ?: return false
+        val totalWidth = pts.maxOf { it.x } - pts.minOf { it.x }
+        val tipDist = kotlin.math.abs(top0.x - top1.x) + kotlin.math.abs(top0.y - top1.y)
+        Log.d("PDollar", "isTwoStrokeArrow: lin0=${"%.2f".format(lin0)} lin1=${"%.2f".format(lin1)} tipDist=${"%.1f".format(tipDist)} totalWidth=${"%.1f".format(totalWidth)}")
+
+        // tips should be close to each other relative to the overall width
+        if (tipDist > totalWidth * 0.85f) return false
+
+        // strokes should diverge downward (ends farther apart than starts)
+        val end0 = stroke0.maxByOrNull { it.y } ?: return false
+        val end1 = stroke1.maxByOrNull { it.y } ?: return false
+        val endDist = kotlin.math.abs(end0.x - end1.x)
+        val startDist = kotlin.math.abs(top0.x - top1.x)
+        return endDist > startDist
+    }
+
+    private fun isArrowUp(pts: List<PDPoint>): Boolean {
+        if (pts.isEmpty()) return false
+        val maxY = pts.maxOf { it.y }
+        val topPoint = pts.minByOrNull { it.y } ?: return false
+        val topX = topPoint.x
+        val midX = (pts.maxOf { it.x } + pts.minOf { it.x }) / 2f
+        val width = pts.maxOf { it.x } - pts.minOf { it.x }
+        val height = maxY - pts.minOf { it.y }
+        if (height < width * 0.3f) return false
+        val centerDist = kotlin.math.abs(topX - midX)
+        Log.d("PDollar", "isArrowUp: topX=${"%.1f".format(topX)} midX=${"%.1f".format(midX)} centerDist=${"%.1f".format(centerDist)} width=${"%.1f".format(width)}")
+        if (centerDist >= width * 0.55f) return false
+        // a checkmark starts top-left and ends bottom-right, topmost point is near the start
+        // an arrow has its topmost point near center horizontally
+        // extra check: top point should NOT be at the very beginning or end of the stroke
+        val topIdx = pts.indexOfFirst { it.y == pts.minOf { p -> p.y } }
+        val relPos = topIdx.toFloat() / pts.size
+        // if topmost point is in the first 20% or last 20% it's likely a checkmark start/end
+        return relPos in 0.15f..0.85f
     }
 
     private fun isCrossingStroke(pts: List<PDPoint>): Boolean {

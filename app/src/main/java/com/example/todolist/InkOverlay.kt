@@ -72,8 +72,9 @@ fun InkOverlay(
                                     shapeRecognizer.looksLikeCheckmarkFast(newStrokes.last())
                             val debounceMs = when {
                                 looksLikeCheckmark -> 500L
-                                newStrokes.size == 1 -> 2500L
-                                else -> 1200L
+                                newStrokes.size >= 3 -> 1800L  // likely handwriting, wait for all strokes
+                                newStrokes.size == 2 -> 1200L  // could be X or !, give it a moment
+                                else -> 2000L                  // single ambiguous stroke
                             }
 
                             debounceJob?.cancel()

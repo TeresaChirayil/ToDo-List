@@ -3,6 +3,7 @@ package com.example.todolist
 import android.util.Log
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
@@ -16,6 +17,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 private val PurpleAccent = Color(0xFF7C3AED)
+private val AmberHighlight = Color(0xFFFFE082)
+private val AmberBorder = Color(0xFFFFB300)
 private val DividerColor = Color(0xFFE9E9EE)
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -35,10 +38,17 @@ fun TaskRow(
                 .fillMaxWidth()
                 .background(
                     when {
-                        selected -> Color(0xFFE8D5F2)
+                        selected -> AmberHighlight
                         highlighted -> Color(0xFFFFF9C4)
                         else -> Color.Transparent
                     }
+                )
+                .then(
+                    if (selected) Modifier.border(
+                        width = 2.dp,
+                        color = AmberBorder,
+                        shape = RoundedCornerShape(4.dp)
+                    ) else Modifier
                 )
                 .combinedClickable(
                     onClick = {
@@ -54,12 +64,12 @@ fun TaskRow(
                 .padding(horizontal = 16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Left selection bar
+            // Left selection bar — wider when selected
             Box(
                 modifier = Modifier
-                    .width(6.dp)
+                    .width(if (selected) 8.dp else 6.dp)
                     .fillMaxHeight()
-                    .background(if (selected) PurpleAccent else Color.Transparent)
+                    .background(if (selected) AmberBorder else Color.Transparent)
             )
 
             Spacer(Modifier.width(12.dp))
