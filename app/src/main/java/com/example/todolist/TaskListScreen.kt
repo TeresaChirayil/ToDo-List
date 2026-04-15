@@ -326,11 +326,11 @@ fun TaskListScreen() {
                                     ?: return@addOnSuccessListener
                                 Log.d("MLKit", "Settled: $best")
                                 when {
-                                    best == "new" || best.startsWith("new") || best == "add" || best == "create" -> {
+                                    best == "new" || best.startsWith("new") -> {
                                         showNewTask = true
                                         clearInkSignal++
                                     }
-                                    best == "tag" || best.startsWith("tag") || best == "label" || best.startsWith("label") -> {
+                                    best == "tag" || best.startsWith("tag") -> {
                                         if (selectedTaskId != null) showTagPicker = true
                                         clearInkSignal++
                                     }
