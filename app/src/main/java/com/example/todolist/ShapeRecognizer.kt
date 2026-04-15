@@ -163,6 +163,23 @@ private val TEMPLATE_ARROW_UP_SINGLE = Template(
     ))
 )
 
+// Right-pointing arrow: line then V tip
+private val TEMPLATE_ARROW_RIGHT = Template(
+    "arrow",
+    normalize(
+        pts(0, 0f,50f, 50f,50f, 100f,50f) +
+                pts(1, 70f,20f, 100f,50f, 70f,80f)
+    )
+)
+
+// Up-right diagonal arrow (single stroke)
+private val TEMPLATE_ARROW_DIAGONAL_UP = Template(
+    "arrow",
+    normalize(pts(0,
+        0f,100f, 50f,50f, 100f,0f, 60f,10f, 100f,0f, 90f,40f
+    ))
+)
+
 private val ALL_TEMPLATES = listOf(
     TEMPLATE_CHECKMARK,
     TEMPLATE_CHECKMARK_WIDE,
@@ -175,7 +192,9 @@ private val ALL_TEMPLATES = listOf(
     TEMPLATE_EXCLAMATION_TICK,
     TEMPLATE_ARROW_UP,
     TEMPLATE_ARROW_UP_TALL,
-    TEMPLATE_ARROW_UP_SINGLE
+    TEMPLATE_ARROW_UP_SINGLE,
+    TEMPLATE_ARROW_RIGHT,
+    TEMPLATE_ARROW_DIAGONAL_UP
 )
 
 class ShapeRecognizer {
@@ -226,8 +245,11 @@ class ShapeRecognizer {
         if (bestName == "exclamation") {
             if (strokeCount < 2) {
                 Log.d("PDollar", "Suppressing exclamation — only 1 stroke, checking arrow fallback")
-                if (isTwoStrokeArrow(rawPoints) || isArrowUp(rawPoints)) {
-                    Log.d("PDollar", "Falling back to arrow (single stroke V)")
+                if (secondName == "arrow" && secondScore >= SCORE_THRESHOLD_ARROW) {
+                    Log.d("PDollar", "Falling back to arrow via PDollar secondScore=${"%.3f".format(secondScore)}")
+                    bestName = "arrow"; bestScore = secondScore
+                } else if (isArrowUp(rawPoints)) {
+                    Log.d("PDollar", "Falling back to arrow via isArrowUp")
                     bestName = "arrow"
                 } else if (secondName == "checkmark" && secondScore >= SCORE_THRESHOLD_CHECKMARK) {
                     Log.d("PDollar", "Falling back to checkmark score=${"%.3f".format(secondScore)}")
@@ -237,7 +259,10 @@ class ShapeRecognizer {
                 }
             } else if (!dotIsBelowLine(rawPoints)) {
                 Log.d("PDollar", "Suppressing exclamation — dot not below line, checking arrow fallback")
-                if (isTwoStrokeArrow(rawPoints)) {
+                if (secondName == "arrow" && secondScore >= SCORE_THRESHOLD_ARROW) {
+                    Log.d("PDollar", "Falling back to arrow via PDollar secondScore=${"%.3f".format(secondScore)}")
+                    bestName = "arrow"; bestScore = secondScore
+                } else if (isTwoStrokeArrow(rawPoints)) {
                     Log.d("PDollar", "Falling back to arrow (2-stroke V)")
                     bestName = "arrow"
                 } else {
@@ -277,12 +302,8 @@ class ShapeRecognizer {
 
         if (bestName == "arrow" && bestScore < SCORE_THRESHOLD_ARROW) return RecognizedShape.Unknown
 
-        if (bestName == "arrow") {
-            if (!isArrowUp(rawPoints)) {
-                Log.d("PDollar", "Suppressing arrow — does not point upward")
-                return RecognizedShape.Unknown
-            }
-        }
+        // when arrow wins PDollar directly, trust PDollar — don't filter by direction
+        // isArrowUp is only used as a fallback check when exclamation is suppressed
 
         return when (bestName) {
             "checkmark"   -> RecognizedShape.Checkmark(bestScore)
@@ -356,7 +377,7 @@ class ShapeRecognizer {
         }
         Log.d("PDollar", "isCrossingStroke xFlips=$xFlips yFlips=$yFlips")
         // too many flips = cursive handwriting, not a real X
-        if (xFlips > 6 || yFlips > 6) return false
+        if (xFlips > 10 || yFlips > 10) return false
         return xFlips >= 1 && yFlips >= 1
     }
 
