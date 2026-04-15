@@ -355,6 +355,8 @@ class ShapeRecognizer {
             if (dy != 0f) prevDy = dy
         }
         Log.d("PDollar", "isCrossingStroke xFlips=$xFlips yFlips=$yFlips")
+        // too many flips = cursive handwriting, not a real X
+        if (xFlips > 6 || yFlips > 6) return false
         return xFlips >= 1 && yFlips >= 1
     }
 

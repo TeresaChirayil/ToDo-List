@@ -73,8 +73,8 @@ fun InkOverlay(
                             val debounceMs = when {
                                 looksLikeCheckmark -> 500L
                                 newStrokes.size >= 3 -> 1800L  // likely handwriting, wait for all strokes
-                                newStrokes.size == 2 -> 1200L  // could be X or !, give it a moment
-                                else -> 2000L                  // single ambiguous stroke
+                                newStrokes.size == 2 -> 1500L  // could be X, !, or crossbar of t
+                                else -> 2500L                  // single stroke — wait longer for possible follow-up
                             }
 
                             debounceJob?.cancel()
