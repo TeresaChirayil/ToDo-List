@@ -257,7 +257,8 @@ fun TaskListScreen() {
                         val targetTask = selectedTaskId?.let { id ->
                             tasks.firstOrNull { it.id == id }
                         } ?: run {
-                            Log.d("Shape", "No task selected - ignoring gesture")
+                            Log.d("Shape", "No task selected - letting ML Kit handle it")
+                            // don't set lastGestureWasShape so ML Kit still runs
                             return@InkOverlay
                         }
 
