@@ -187,9 +187,6 @@ private val ALL_TEMPLATES = listOf(
     TEMPLATE_XMARK_SINGLE,
     TEMPLATE_XMARK_LOOP,
     TEMPLATE_XMARK_LOOP_MIRROR,
-    TEMPLATE_EXCLAMATION,
-    TEMPLATE_EXCLAMATION_GAP,
-    TEMPLATE_EXCLAMATION_TICK,
     TEMPLATE_ARROW_UP,
     TEMPLATE_ARROW_UP_TALL,
     TEMPLATE_ARROW_UP_SINGLE,
@@ -239,37 +236,7 @@ class ShapeRecognizer {
         Log.d("PDollar", "BEST → $bestName  score=${"%.3f".format(bestScore)}  strokes=$strokeCount")
 
         if (bestScore < SCORE_THRESHOLD) return RecognizedShape.Unknown
-        if (bestName == "checkmark"   && bestScore < SCORE_THRESHOLD_CHECKMARK)   return RecognizedShape.Unknown
-        if (bestName == "exclamation" && bestScore < SCORE_THRESHOLD_EXCLAMATION) return RecognizedShape.Unknown
-
-        if (bestName == "exclamation") {
-            if (strokeCount < 2) {
-                Log.d("PDollar", "Suppressing exclamation — only 1 stroke, checking arrow fallback")
-                if (secondName == "arrow" && secondScore >= SCORE_THRESHOLD_ARROW) {
-                    Log.d("PDollar", "Falling back to arrow via PDollar secondScore=${"%.3f".format(secondScore)}")
-                    bestName = "arrow"; bestScore = secondScore
-                } else if (isArrowUp(rawPoints)) {
-                    Log.d("PDollar", "Falling back to arrow via isArrowUp")
-                    bestName = "arrow"
-                } else if (secondName == "checkmark" && secondScore >= SCORE_THRESHOLD_CHECKMARK) {
-                    Log.d("PDollar", "Falling back to checkmark score=${"%.3f".format(secondScore)}")
-                    bestName = "checkmark"; bestScore = secondScore
-                } else {
-                    return RecognizedShape.Unknown
-                }
-            } else if (!dotIsBelowLine(rawPoints)) {
-                Log.d("PDollar", "Suppressing exclamation — dot not below line, checking arrow fallback")
-                if (secondName == "arrow" && secondScore >= SCORE_THRESHOLD_ARROW) {
-                    Log.d("PDollar", "Falling back to arrow via PDollar secondScore=${"%.3f".format(secondScore)}")
-                    bestName = "arrow"; bestScore = secondScore
-                } else if (isTwoStrokeArrow(rawPoints)) {
-                    Log.d("PDollar", "Falling back to arrow (2-stroke V)")
-                    bestName = "arrow"
-                } else {
-                    return RecognizedShape.Unknown
-                }
-            }
-        }
+        if (bestName == "checkmark" && bestScore < SCORE_THRESHOLD_CHECKMARK) return RecognizedShape.Unknown
 
         if (bestName == "xmark") {
             if (strokeCount < 2) {
@@ -302,15 +269,28 @@ class ShapeRecognizer {
 
         if (bestName == "arrow" && bestScore < SCORE_THRESHOLD_ARROW) return RecognizedShape.Unknown
 
-        // when arrow wins PDollar directly, trust PDollar — don't filter by direction
-        // isArrowUp is only used as a fallback check when exclamation is suppressed
+        // arrow must clearly beat xmark and checkmark — raise margin to 0.08
+        if (bestName == "arrow") {
+            if (secondName == "xmark" && secondScore >= bestScore - 0.08f) {
+                Log.d("PDollar", "Suppressing arrow — too close to xmark (${"%.3f".format(secondScore)})")
+                return RecognizedShape.Unknown
+            }
+            if (secondName == "checkmark" && secondScore >= bestScore - 0.08f) {
+                Log.d("PDollar", "Suppressing arrow — too close to checkmark (${"%.3f".format(secondScore)})")
+                return RecognizedShape.Unknown
+            }
+            // also require geometric arrow shape — peak must be near top of bounding box
+            if (!isArrowUp(rawPoints)) {
+                Log.d("PDollar", "Suppressing arrow — failed isArrowUp geometric check")
+                return RecognizedShape.Unknown
+            }
+        }
 
         return when (bestName) {
-            "checkmark"   -> RecognizedShape.Checkmark(bestScore)
-            "xmark"       -> RecognizedShape.XMark(bestScore)
-            "exclamation" -> RecognizedShape.UpArrow(bestScore)
-            "arrow"       -> RecognizedShape.UpArrow(bestScore)
-            else          -> RecognizedShape.Unknown
+            "checkmark" -> RecognizedShape.Checkmark(bestScore)
+            "xmark"     -> RecognizedShape.XMark(bestScore)
+            "arrow"     -> RecognizedShape.UpArrow(bestScore)
+            else        -> RecognizedShape.Unknown
         }
     }
 
