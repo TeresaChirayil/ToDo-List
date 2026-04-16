@@ -6,14 +6,14 @@ A gesture and handwriting based to-do list Android app built for CS423. Users dr
 
 ## Features
 
-| Gesture / Input | Action |
-|---|---|
-| Write `new` | Opens dialog to create a new task |
-| Draw checkmark | Marks selected task as complete |
-| Draw X | Deletes selected task |
-| Draw exclamation mark | Moves selected task up one position |
-| Write `tag` | Opens tag dropdown (work, personal, urgent, school, home, other) |
-| Double tap a task | Opens task for editing |
+| Gesture / Input      | Action |
+|----------------------|---|
+| Write `new`          | Opens dialog to create a new task |
+| Draw checkmark       | Marks selected task as complete |
+| Draw X               | Deletes selected task |
+| Draw arrow       | Moves selected task up one position |
+| Write `tag`          | Opens tag dropdown (work, personal, urgent, school, home, other) |
+| Double tap a task    | Opens task for editing |
 | Tap Undo in snackbar | Reverses the last action |
 
 All gesture actions show a snackbar at the bottom with an Undo button.
