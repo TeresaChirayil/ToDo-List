@@ -65,16 +65,33 @@ fun InkOverlay(
                             strokes = newStrokes
                             onInkFinished(newStrokes)
 
-                            // Checkmark is 1 stroke — fire fast if it looks like one
-                            // Single non-checkmark stroke might get a second (X or !) — wait longer
-                            // 2+ strokes — gesture is likely complete
+                            // Decide how long to wait before firing gesture recognition.
+                            // Checkmarks are always 1 stroke — fire quickly.
+                            // Arrows can be 1 or 2 strokes — a single diagonal could be the first
+                            //   leg of a 2-stroke arrow, so wait longer before committing.
+                            // X is usually 2 strokes but can also be 1.
+                            // 3+ strokes is handwriting — wait longer for ML Kit.
+                            // Check caret/arrow-leg FIRST — these override the checkmark fast-fire.
+                            // A ^ caret or diagonal leg could be the start of a stemmed arrow,
+                            // so we always wait before committing even if it also looks like a checkmark.
+                            val looksLikeCaret = newStrokes.size == 1 &&
+                                    shapeRecognizer.looksLikeCaretFast(newStrokes.last())
+                            val looksLikeArrowLeg = newStrokes.size == 1 &&
+                                    shapeRecognizer.looksLikeArrowLeg(newStrokes.last())
                             val looksLikeCheckmark = newStrokes.size == 1 &&
+                                    !looksLikeCaret &&
                                     shapeRecognizer.looksLikeCheckmarkFast(newStrokes.last())
                             val debounceMs = when {
-                                looksLikeCheckmark -> 500L
-                                newStrokes.size >= 3 -> 1800L  // likely handwriting, wait for all strokes
-                                newStrokes.size == 2 -> 1500L  // could be X, !, or crossbar of t
-                                else -> 2500L                  // single stroke — wait longer for possible follow-up
+                                // ^ caret or diagonal leg: wait for possible stem/second leg
+                                looksLikeCaret       -> 2000L
+                                looksLikeArrowLeg    -> 2000L
+                                // Confident checkmark (not a caret): fire fast
+                                looksLikeCheckmark   -> 400L
+                                // 4+ strokes = handwriting, 3 = stemmed arrow done, 2 = X/arrow done
+                                newStrokes.size >= 4 -> 1600L
+                                newStrokes.size == 3 -> 1000L
+                                newStrokes.size == 2 -> 1000L
+                                else                 -> 1400L
                             }
 
                             debounceJob?.cancel()
